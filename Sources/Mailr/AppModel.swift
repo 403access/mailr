@@ -1,0 +1,690 @@
+import Foundation
+import Observation
+import MailCore
+
+struct MailboxSelection: Hashable {
+    var accountID: UUID
+    var mailboxPath: String
+}
+
+struct ComposeDraft: Identifiable {
+    let id = UUID()
+    var accountID: UUID
+    var to: String = ""
+    var cc: String = ""
+    var bcc: String = ""
+    var subject: String = ""
+    var body: String = ""
+    var attachments: [OutgoingAttachment] = []
+    var inReplyTo: String?
+    var references: [String] = []
+    var isSending = false
+}
+
+struct AccountRuntime: Identifiable {
+    var account: MailAccount
+    var mailboxes: [Mailbox] = []
+    var isLoadingMailboxes = false
+    var error: String?
+
+    var id: UUID { account.id }
+}
+
+@MainActor
+@Observable
+final class AppModel {
+    // Sidebar & accounts
+    var runtimes: [AccountRuntime] = []
+    var selection: MailboxSelection?
+    var showSettings = false
+    var isRefreshing = false
+    var statusText: String?
+
+    // Message list
+    var messages: [MessageSummary] = []
+    var selectedMessageID: String?
+    var isLoadingMessages = false
+    var messagesError: String?
+    var searchText = ""
+
+    // Reader
+    var currentMessage: MailMessage?
+    var isLoadingBody = false
+    var remoteContentAllowed = false
+
+    // Compose & alerts
+    var compose: ComposeDraft?
+    var errorMessage: String?
+
+    @ObservationIgnored private let accountStore = AccountStore()
+    @ObservationIgnored private let credentials = KeychainCredentialStore()
+    @ObservationIgnored private var services: [UUID: any MailService] = [:]
+    @ObservationIgnored private var loadToken = UUID()
+    @ObservationIgnored private var bodyToken = UUID()
+    @ObservationIgnored private var started = false
+    @ObservationIgnored private var clearStatusTask: Task<Void, Never>?
+
+    init() {
+        loadAccounts()
+    }
+
+    // MARK: - Derived state
+
+    var activeRuntime: AccountRuntime? {
+        guard let selection else { return nil }
+        return runtimes.first(where: { $0.id == selection.accountID })
+    }
+
+    var activeAccount: MailAccount? { activeRuntime?.account }
+
+    var activeMailbox: Mailbox? {
+        guard let selection else { return nil }
+        return activeRuntime?.mailboxes.first(where: { $0.path == selection.mailboxPath })
+    }
+
+    var selectedSummary: MessageSummary? {
+        guard let selectedMessageID else { return nil }
+        return messages.first(where: { $0.id == selectedMessageID })
+    }
+
+    var filteredMessages: [MessageSummary] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return messages }
+        return messages.filter { message in
+            message.subject.localizedCaseInsensitiveContains(query)
+                || message.senderDisplayName.localizedCaseInsensitiveContains(query)
+                || message.senderAddress.localizedCaseInsensitiveContains(query)
+                || message.snippet.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    var totalUnread: Int {
+        runtimes.reduce(0) { partial, runtime in
+            partial + runtime.mailboxes
+                .filter { $0.role == .inbox }
+                .reduce(0) { $0 + $1.unreadCount }
+        }
+    }
+
+    var currentAccountAddress: String {
+        activeAccount?.emailAddress ?? ""
+    }
+
+    // MARK: - Startup
+
+    func start() async {
+        guard !started else { return }
+        started = true
+
+        let demoID = runtimes.first(where: { $0.account.isDemo })?.id
+        if let demoID {
+            await loadMailboxes(for: demoID)
+        }
+
+        for runtime in runtimes where runtime.account.isDemo == false {
+            await loadMailboxes(for: runtime.id)
+        }
+
+        if selection == nil {
+            selectDefaultMailbox()
+        }
+
+        #if DEBUG
+        if let preview = ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] {
+            await applyPreviewMode(preview)
+        }
+        #endif
+    }
+
+    #if DEBUG
+    /// Small, debug-only launch hook used for screenshot and simulator smoke
+    /// tests. It is compiled out of release builds.
+    private func applyPreviewMode(_ mode: String) async {
+        // Let the first UI task finish so this preview does not race with the
+        // normal selection-driven load.
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        guard let demoID = runtimes.first(where: { $0.account.isDemo })?.id else { return }
+
+        if selection == nil || selection?.accountID != demoID,
+           let inbox = runtimes.first(where: { $0.id == demoID })?.mailboxes.first(where: { $0.role == .inbox }) {
+            selection = MailboxSelection(accountID: demoID, mailboxPath: inbox.path)
+        }
+
+        switch mode {
+        case "inbox":
+            await loadMessages()
+        case "message":
+            await loadMessages()
+            if let first = messages.first {
+                selectedMessageID = first.id
+                await openSelectedMessage()
+            }
+        case "attachment":
+            await loadMessages()
+            if let withAttachment = messages.first(where: { $0.hasAttachments }) {
+                selectedMessageID = withAttachment.id
+                await openSelectedMessage()
+            }
+        case "compose":
+            newCompose()
+        case "settings":
+            showSettings = true
+        case "account":
+            showSettings = true
+        default:
+            break
+        }
+    }
+    #endif
+
+    private func loadAccounts() {
+        do {
+            var stored = try accountStore.load()
+            if stored.isEmpty {
+                stored = [.demo]
+                try? accountStore.save(stored)
+            }
+            runtimes = stored.map { AccountRuntime(account: $0) }
+        } catch {
+            errorMessage = "Could not read your account list: \(error.localizedDescription)"
+            runtimes = [AccountRuntime(account: .demo)]
+        }
+    }
+
+    private func selectDefaultMailbox() {
+        guard selection == nil else { return }
+        for runtime in runtimes {
+            if let inbox = runtime.mailboxes.first(where: { $0.role == .inbox }) ?? runtime.mailboxes.first {
+                selection = MailboxSelection(accountID: runtime.id, mailboxPath: inbox.path)
+                return
+            }
+        }
+    }
+
+    // MARK: - Mailboxes
+
+    func loadMailboxes(for accountID: UUID) async {
+        guard let index = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
+        runtimes[index].isLoadingMailboxes = true
+        runtimes[index].error = nil
+
+        let account = runtimes[index].account
+        do {
+            let service = try service(for: accountID)
+            let boxes = try await service.listMailboxes()
+            guard let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
+            runtimes[currentIndex].mailboxes = boxes
+            runtimes[currentIndex].error = nil
+
+            if selection == nil, let inbox = boxes.first(where: { $0.role == .inbox }) ?? boxes.first {
+                selection = MailboxSelection(accountID: accountID, mailboxPath: inbox.path)
+            } else if let selection, selection.accountID == accountID,
+                      !boxes.contains(where: { $0.path == selection.mailboxPath }) {
+                self.selection = boxes.first.map {
+                    MailboxSelection(accountID: accountID, mailboxPath: $0.path)
+                }
+            }
+        } catch {
+            guard let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
+            runtimes[currentIndex].error = error.localizedDescription
+            if runtimes[currentIndex].mailboxes.isEmpty, selection?.accountID == accountID {
+                self.selection = nil
+            }
+            if account.isDemo == false {
+                // Surface setup problems once, rather than on every refresh.
+                errorMessage = error.localizedDescription
+            }
+        }
+
+        if let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) {
+            runtimes[currentIndex].isLoadingMailboxes = false
+        }
+    }
+
+    func refreshAll() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        for runtime in runtimes {
+            await loadMailboxes(for: runtime.id)
+        }
+        if selection != nil {
+            await loadMessages(preserveSelection: true)
+        }
+    }
+
+    // MARK: - Messages
+
+    func loadMessages(preserveSelection: Bool = false) async {
+        guard let selection else {
+            messages = []
+            selectedMessageID = nil
+            currentMessage = nil
+            return
+        }
+
+        let token = UUID()
+        loadToken = token
+        isLoadingMessages = true
+        messagesError = nil
+        if !preserveSelection {
+            selectedMessageID = nil
+            currentMessage = nil
+            searchText = ""
+        }
+
+        do {
+            let service = try service(for: selection.accountID)
+            let fetched = try await service.fetchMessages(mailbox: selection.mailboxPath, limit: 100)
+            guard token == loadToken else { return }
+            messages = fetched
+            if preserveSelection, let id = selectedMessageID, !fetched.contains(where: { $0.id == id }) {
+                selectedMessageID = nil
+                currentMessage = nil
+            }
+        } catch {
+            guard token == loadToken else { return }
+            messagesError = error.localizedDescription
+        }
+
+        if token == loadToken {
+            isLoadingMessages = false
+        }
+    }
+
+    func selectionDidChange() async {
+        currentMessage = nil
+        remoteContentAllowed = false
+        await loadMessages()
+    }
+
+    func openSelectedMessage() async {
+        guard let selection, let id = selectedMessageID,
+              let summary = messages.first(where: { $0.id == id }) else {
+            currentMessage = nil
+            return
+        }
+
+        let token = UUID()
+        bodyToken = token
+        isLoadingBody = true
+        remoteContentAllowed = false
+
+        do {
+            let service = try service(for: selection.accountID)
+            let message = try await service.fetchMessage(mailbox: summary.mailbox, uid: summary.uid)
+            guard token == bodyToken, selectedMessageID == id else { return }
+            currentMessage = message
+            isLoadingBody = false
+
+            if summary.isUnread {
+                markSeen(message: summary, seen: true)
+            }
+        } catch {
+            guard token == bodyToken else { return }
+            isLoadingBody = false
+            errorMessage = error.localizedDescription
+            currentMessage = MailMessage(summary: summary, text: nil, html: nil)
+        }
+    }
+
+    func toggleFlag(_ summary: MessageSummary? = nil) {
+        guard let target = summary ?? currentMessage?.summary ?? selectedSummary,
+              let accountID = accountID(forMailbox: target.mailbox) ?? selection?.accountID else {
+            return
+        }
+        let next = !target.isFlagged
+
+        updateSummary(id: target.id) { $0.isFlagged = next }
+        if currentMessage?.id == target.id {
+            currentMessage?.summary.isFlagged = next
+        }
+
+        Task {
+            do {
+                let service = try service(for: accountID)
+                try await service.setFlags(
+                    mailbox: target.mailbox,
+                    uid: target.uid,
+                    flags: [.flagged],
+                    enabled: next
+                )
+            } catch {
+                updateSummary(id: target.id) { $0.isFlagged = !next }
+                if currentMessage?.id == target.id {
+                    currentMessage?.summary.isFlagged = !next
+                }
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func markUnread(_ summary: MessageSummary? = nil) {
+        guard let target = summary ?? currentMessage?.summary ?? selectedSummary,
+              let accountID = accountID(forMailbox: target.mailbox) ?? selection?.accountID else {
+            return
+        }
+        markSeen(message: target, seen: false, account: accountID)
+    }
+
+    func markRead(_ summary: MessageSummary? = nil) {
+        guard let target = summary ?? currentMessage?.summary ?? selectedSummary,
+              let accountID = accountID(forMailbox: target.mailbox) ?? selection?.accountID else {
+            return
+        }
+        markSeen(message: target, seen: true, account: accountID)
+    }
+
+    private func markSeen(message: MessageSummary, seen: Bool, account: UUID? = nil) {
+        guard let resolvedAccount = account ?? accountID(forMailbox: message.mailbox) ?? selection?.accountID else {
+            return
+        }
+        guard message.isRead != seen else { return }
+
+        updateSummary(id: message.id) { $0.isRead = seen }
+        if currentMessage?.id == message.id {
+            currentMessage?.summary.isRead = seen
+        }
+        if let index = mailboxesIndex(accountID: resolvedAccount, path: message.mailbox) {
+            let current = runtimes[index.account].mailboxes[index.mailbox].unreadCount
+            runtimes[index.account].mailboxes[index.mailbox].unreadCount = max(0, current + (seen ? -1 : 1))
+        }
+
+        Task {
+            do {
+                let service = try service(for: resolvedAccount)
+                try await service.setFlags(
+                    mailbox: message.mailbox,
+                    uid: message.uid,
+                    flags: [.seen],
+                    enabled: seen
+                )
+            } catch {
+                // Leave the optimistic state alone; a refresh will correct it.
+            }
+        }
+    }
+
+    func delete(_ summary: MessageSummary? = nil) {
+        guard let target = summary ?? currentMessage?.summary ?? selectedSummary,
+              let accountID = accountID(forMailbox: target.mailbox) ?? selection?.accountID else {
+            return
+        }
+
+        let nextSelection = neighborID(after: target.id)
+        removeLocally(id: target.id)
+
+        Task {
+            do {
+                let service = try service(for: accountID)
+                try await service.delete(mailbox: target.mailbox, uid: target.uid)
+                await loadMailboxes(for: accountID)
+                await loadMessages(preserveSelection: true)
+                if let nextSelection, messages.contains(where: { $0.id == nextSelection }) {
+                    selectedMessageID = nextSelection
+                    await openSelectedMessage()
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+                await loadMessages(preserveSelection: true)
+            }
+        }
+    }
+
+    func replyToCurrentMessage() {
+        guard let message = currentMessage ?? selectedSummary.map({ MailMessage(summary: $0) }),
+              let accountID = accountID(forMailbox: message.summary.mailbox) ?? selection?.accountID else {
+            return
+        }
+
+        let account = runtimes.first(where: { $0.id == accountID })?.account
+        let ownAddresses = Set([account?.emailAddress.lowercased() ?? ""])
+        let recipient = message.summary.from.first(where: { !ownAddresses.contains($0.address.lowercased()) })
+            ?? message.summary.to.first(where: { !ownAddresses.contains($0.address.lowercased()) })
+            ?? message.summary.from.first
+
+        let subject = message.summary.subject.lowercased().hasPrefix("re:")
+            ? message.summary.subject
+            : "Re: \(message.summary.subject)"
+
+        let source = message.text
+            ?? message.html.map(MessageParser.stripHTML)
+            ?? ""
+        let quoted = source
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { "> \($0)" }
+            .joined(separator: "\n")
+
+        var references = message.summary.references
+        if let messageID = message.summary.messageID, !references.contains(messageID) {
+            references.append(messageID)
+        }
+
+        compose = ComposeDraft(
+            accountID: accountID,
+            to: recipient?.address ?? "",
+            subject: subject,
+            body: "\n\nOn \(message.summary.date.formatted(date: .abbreviated, time: .shortened)), \(message.summary.senderDisplayName) wrote:\n\(quoted)",
+            inReplyTo: message.summary.messageID,
+            references: references
+        )
+    }
+
+    func newCompose() {
+        let accountID = selection?.accountID ?? runtimes.first?.id
+        guard let accountID else { return }
+        compose = ComposeDraft(accountID: accountID)
+    }
+
+    // MARK: - Send
+
+    func send(_ draft: ComposeDraft) async -> Bool {
+        guard let account = runtimes.first(where: { $0.id == draft.accountID })?.account else {
+            errorMessage = "The selected account is no longer available."
+            return false
+        }
+
+        let to = EmailAddress.parseList(draft.to)
+        let cc = EmailAddress.parseList(draft.cc)
+        let bcc = EmailAddress.parseList(draft.bcc)
+
+        guard !to.isEmpty || !cc.isEmpty || !bcc.isEmpty else {
+            errorMessage = "Add at least one recipient."
+            return false
+        }
+
+        let outgoing = OutgoingMessage(
+            from: account.fromAddress,
+            to: to,
+            cc: cc,
+            bcc: bcc,
+            subject: draft.subject,
+            text: draft.body,
+            attachments: draft.attachments,
+            inReplyTo: draft.inReplyTo,
+            references: draft.references
+        )
+
+        do {
+            let service = try service(for: draft.accountID)
+            try await service.send(outgoing)
+            compose = nil
+            flash("Message sent")
+            if selection?.accountID == draft.accountID {
+                await loadMailboxes(for: draft.accountID)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    // MARK: - Account editing
+
+    func saveAccount(_ account: MailAccount, password: String?) async throws {
+        if let password, !password.isEmpty {
+            try credentials.setPassword(password, for: account.id)
+        }
+
+        var accounts = runtimes.map(\.account)
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index] = account
+        } else {
+            accounts.append(account)
+        }
+        try accountStore.save(accounts)
+
+        if let existing = services[account.id] {
+            await existing.close()
+        }
+        services[account.id] = nil
+
+        if let index = runtimes.firstIndex(where: { $0.id == account.id }) {
+            runtimes[index] = AccountRuntime(
+                account: account,
+                mailboxes: runtimes[index].mailboxes,
+                isLoadingMailboxes: true,
+                error: nil
+            )
+        } else {
+            runtimes.append(AccountRuntime(account: account))
+        }
+
+        await loadMailboxes(for: account.id)
+        if selection?.accountID == account.id {
+            await loadMessages(preserveSelection: true)
+        }
+    }
+
+    func deleteAccount(_ accountID: UUID) async {
+        await services[accountID]?.close()
+        services[accountID] = nil
+        try? credentials.deletePassword(for: accountID)
+
+        runtimes.removeAll { $0.id == accountID }
+        if selection?.accountID == accountID {
+            selection = nil
+            messages = []
+            selectedMessageID = nil
+            currentMessage = nil
+            selectDefaultMailbox()
+        }
+
+        try? accountStore.save(runtimes.map(\.account))
+    }
+
+    func passwordForEditing(_ accountID: UUID) -> String {
+        (try? credentials.password(for: accountID)) ?? ""
+    }
+
+    func testAccount(_ account: MailAccount, password: String) async throws -> Int {
+        if account.isDemo {
+            let service = DemoMailService()
+            return try await service.listMailboxes().count
+        }
+        guard !password.isEmpty else {
+            throw MailError.authentication("Enter the account password first.")
+        }
+        let service = IMAPMailService(account: account, password: password)
+        do {
+            let boxes = try await service.listMailboxes()
+            await service.close()
+            return boxes.count
+        } catch {
+            await service.close()
+            throw error
+        }
+    }
+
+    // MARK: - Helpers
+
+    func service(for accountID: UUID) throws -> any MailService {
+        if let existing = services[accountID] {
+            return existing
+        }
+        guard let account = runtimes.first(where: { $0.id == accountID })?.account else {
+            throw MailError.notConfigured("That account is no longer available.")
+        }
+
+        let service: any MailService
+        if account.isDemo {
+            service = DemoMailService()
+        } else {
+            guard let password = try credentials.password(for: accountID), !password.isEmpty else {
+                throw MailError.authentication(
+                    "No password is saved for \(account.emailAddress). Add one in Settings."
+                )
+            }
+            service = IMAPMailService(account: account, password: password)
+        }
+
+        services[accountID] = service
+        return service
+    }
+
+    func accountID(forMailbox path: String) -> UUID? {
+        if let selection, selection.mailboxPath == path {
+            return selection.accountID
+        }
+        for runtime in runtimes {
+            if runtime.mailboxes.contains(where: { $0.path == path }) {
+                return runtime.id
+            }
+        }
+        return nil
+    }
+
+    func updateSummary(id: String, _ transform: (inout MessageSummary) -> Void) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        transform(&messages[index])
+    }
+
+    private func removeLocally(id: String) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        let next = messages.count > 1
+            ? (index + 1 < messages.count ? messages[index + 1].id : messages[index - 1].id)
+            : nil
+        let removed = messages.remove(at: index)
+
+        if let location = mailboxesIndex(accountID: selection?.accountID ?? UUID(), path: removed.mailbox) {
+            runtimes[location.account].mailboxes[location.mailbox].totalCount =
+                max(0, runtimes[location.account].mailboxes[location.mailbox].totalCount - 1)
+            if removed.isUnread {
+                runtimes[location.account].mailboxes[location.mailbox].unreadCount =
+                    max(0, runtimes[location.account].mailboxes[location.mailbox].unreadCount - 1)
+            }
+        }
+
+        if selectedMessageID == id {
+            selectedMessageID = next
+            currentMessage = nil
+        }
+    }
+
+    private func neighborID(after id: String) -> String? {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return nil }
+        if index + 1 < messages.count { return messages[index + 1].id }
+        if index > 0 { return messages[index - 1].id }
+        return nil
+    }
+
+    private func mailboxesIndex(accountID: UUID, path: String) -> (account: Int, mailbox: Int)? {
+        guard let accountIndex = runtimes.firstIndex(where: { $0.id == accountID }),
+              let mailboxIndex = runtimes[accountIndex].mailboxes.firstIndex(where: { $0.path == path }) else {
+            return nil
+        }
+        return (accountIndex, mailboxIndex)
+    }
+
+    func flash(_ text: String) {
+        statusText = text
+        clearStatusTask?.cancel()
+        clearStatusTask = Task {
+            try? await Task.sleep(nanoseconds: 2_400_000_000)
+            guard !Task.isCancelled else { return }
+            statusText = nil
+        }
+    }
+}

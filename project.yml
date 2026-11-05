@@ -1,0 +1,68 @@
+name: Mailr
+options:
+  bundleIdPrefix: app.mailr
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CLANG_ENABLE_MODULES: YES
+
+targets:
+  MailCore:
+    type: framework
+    platform: iOS
+    sources:
+      - path: Sources/MailCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.mailr.MailCore
+        PRODUCT_NAME: MailCore
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+        BUILD_LIBRARY_FOR_DISTRIBUTION: NO
+        GENERATE_INFOPLIST_FILE: YES
+
+  Mailr:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/Mailr
+    dependencies:
+      - target: MailCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.mailr.Mailr
+        PRODUCT_NAME: Mailr
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Mailr
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: QML5B57EMH
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+    entitlements:
+      path: Support/Mailr.entitlements
+      properties:
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)app.mailr.Mailr
+
+schemes:
+  Mailr:
+    build:
+      targets:
+        Mailr: all
+    run:
+      config: Debug
+    archive:
+      config: Release
