@@ -24,9 +24,10 @@ A native, privacy-first mail client for **iPhone and iPad**, with a macOS build 
 - **A real MIME engine.** Multipart trees, base64 and quoted-printable, RFC 2047 encoded words, RFC 2231 filenames, charset conversion, and inline `cid:` images turned into data URLs.
 - **Safe HTML reader.** JavaScript is disabled, a strict Content Security Policy is applied, and remote images are blocked until you explicitly load them. Link clicks open in your browser.
 - **Attachments.** View, download/save with the system file exporter, or attach files while composing.
-- **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes reset when you quit.
+- **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
+- **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
 - **Platform integration.** Keychain password storage, dark mode, search, pull-to-refresh, and adaptive sheets.
-- **No third-party dependencies.** Only Apple frameworks: SwiftUI, WebKit, Network, Security, and Foundation.
+- **No third-party dependencies.** Only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, Foundation, and SQLite3.
 
 ## Quick start
 
@@ -93,6 +94,7 @@ Sources/
     MessageBuilder.swift    RFC 5322 / MIME composition
     SocketConnection.swift  Async TLS byte stream on Network.framework
     MailService.swift       Service protocol, account store, Keychain store
+    MailDatabase.swift      Synchronous SQLite store for local mail data
     DemoMailService.swift   Seeded offline mailbox
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
@@ -129,10 +131,11 @@ The suite covers:
 - Multipart extraction, HTML/plain selection, inline content, snippets
 - IMAP list/status/fetch-literal parsing and modified UTF-7
 - MIME message building, header-injection defense, CRLF correctness
-- Account persistence
-- Demo mailbox reads, flags, send, and move-to-Trash behavior
+- Account, mailbox, message, body, and attachment persistence in SQLite
+- Legacy `accounts.json` migration into SQLite
+- Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 28 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
+All 32 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
 
 ### Debug UI previews
 
@@ -147,7 +150,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `accou
 
 ## Security and privacy
 
-- Passwords live in the **macOS/iOS Keychain**, keyed by account UUID. Account metadata is a JSON file in Application Support with `0600` permissions on macOS.
+- Passwords live in the **macOS/iOS Keychain**, keyed by account UUID. Account metadata, cached mailboxes, message summaries, bodies, and attachments are stored in a **SQLite database** in Application Support (`Mailr/mailr.sqlite3`). Existing `accounts.json` files are imported once and renamed.
 - TLS is handled by **Network.framework** with the system trust store and a 30-second connect timeout. Credentials are only sent after the TLS connection is established, unless the user explicitly selects the insecure plaintext option.
 - The HTML reader disables JavaScript, uses a non-persistent web data store, injects a restrictive CSP, and blocks remote images by default to prevent tracking pixels.
 - There is no analytics, crash reporting, or remote logging.
@@ -160,4 +163,4 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `accou
 - Message lists fetch the newest 100 messages and search is local. There is no server-side search yet.
 - Compose does not autosave drafts, and there is no conversation/thread view or undo-delete.
 - Attachments are downloaded on demand from the full message body; there is no BODYSTRUCTURE-based lazy attachment fetching.
-- The demo mailbox is intentionally in-memory and resets when the app quits.
+- The local cache stores the newest 100 messages per mailbox; older mail is fetched from the server when it returns to the window.

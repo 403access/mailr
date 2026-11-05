@@ -16,48 +16,27 @@ public protocol MailService: Sendable {
 
 // MARK: - Account persistence
 
+/// Account persistence backed by the shared synchronous SQLite database.
+///
+/// The `fileURL` initializer is kept for tests and tools; the database file
+/// stores accounts alongside mailboxes, messages, bodies, and attachments.
 public struct AccountStore: Sendable {
-    public let fileURL: URL
+    public let database: MailDatabase
+
+    public var fileURL: URL {
+        database.fileURL ?? MailDatabase.defaultURL
+    }
 
     public init(fileURL: URL? = nil) {
-        if let fileURL {
-            self.fileURL = fileURL
-        } else {
-            let base: URL
-            if let support = FileManager.default.urls(
-                for: .applicationSupportDirectory,
-                in: .userDomainMask
-            ).first {
-                base = support
-            } else {
-                base = FileManager.default.temporaryDirectory
-            }
-            self.fileURL = base
-                .appendingPathComponent("Mailr", isDirectory: true)
-                .appendingPathComponent("accounts.json")
-        }
+        self.database = MailDatabase(fileURL: fileURL)
     }
 
     public func load() throws -> [MailAccount] {
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
-        let data = try Data(contentsOf: fileURL)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([MailAccount].self, from: data)
+        try database.loadAccounts()
     }
 
     public func save(_ accounts: [MailAccount]) throws {
-        let directory = fileURL.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(accounts)
-        try data.write(to: fileURL, options: .atomic)
-
-        // Accounts are not secret, but keep the file readable only by the user.
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        try database.saveAccounts(accounts)
     }
 }
 

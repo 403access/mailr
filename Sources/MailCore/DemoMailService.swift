@@ -1,52 +1,37 @@
 import Foundation
 
 /// A fully local mailbox used for first-launch demoing and for trying the UI
-/// without configuring a server.
+/// without configuring a server. State is stored in the shared SQLite
+/// database, so flags, deletions, and sent messages survive relaunches.
 public actor DemoMailService: MailService {
-    private var mailboxes: [Mailbox]
-    private var messagesByMailbox: [String: [MessageSummary]]
-    private var bodies: [String: MailMessage]
-    private var nextUID: UInt32 = 500
+    private let database: MailDatabase
+    private let accountID: UUID
+    private var seeded = false
 
-    public init() {
-        let seed = DemoSeed.make()
-        self.mailboxes = seed.mailboxes
-        var messages = seed.messages
-        for box in seed.mailboxes where messages[box.path] == nil {
-            messages[box.path] = []
-        }
-        self.messagesByMailbox = messages
-        self.bodies = seed.bodies
+    /// Pass the app's database to persist the demo mailbox. Omitting it uses a
+    /// private in-memory database, which keeps tests and previews isolated.
+    public init(database: MailDatabase? = nil) {
+        self.database = database ?? MailDatabase(inMemory: true)
+        self.accountID = MailAccount.demoID
     }
 
     public func listMailboxes() async throws -> [Mailbox] {
-        let refreshed = mailboxes.map { box -> Mailbox in
-            var copy = box
-            let messages = messagesByMailbox[box.path] ?? []
-            copy.totalCount = messages.count
-            copy.unreadCount = messages.filter(\.isUnread).count
-            return copy
-        }
-        return Mailbox.sorted(refreshed)
+        try seedIfNeeded()
+        return Mailbox.sorted(try database.loadMailboxes(accountID: accountID))
     }
 
     public func fetchMessages(mailbox: String, limit: Int) async throws -> [MessageSummary] {
+        try seedIfNeeded()
         try await simulateLatency()
-        guard let stored = messagesByMailbox[mailbox] else {
-            throw MailError.commandFailed("No mailbox named \(mailbox).")
-        }
-        return Array(stored.sorted { $0.date > $1.date }.prefix(limit))
+        try requireMailbox(mailbox)
+        return try database.loadMessages(accountID: accountID, mailbox: mailbox, limit: limit)
     }
 
     public func fetchMessage(mailbox: String, uid: UInt32) async throws -> MailMessage {
+        try seedIfNeeded()
         try await simulateLatency()
-        let key = "\(mailbox)#\(uid)"
-        guard let stored = bodies[key] else {
+        guard let message = try database.loadMessage(accountID: accountID, mailbox: mailbox, uid: uid) else {
             throw MailError.commandFailed("That message is no longer available.")
-        }
-        var message = stored
-        if let current = messagesByMailbox[mailbox]?.first(where: { $0.uid == uid }) {
-            message.summary = current
         }
         return message
     }
@@ -57,62 +42,50 @@ public actor DemoMailService: MailService {
         flags: Set<MessageFlag>,
         enabled: Bool
     ) async throws {
+        try seedIfNeeded()
         try await simulateLatency(120)
-        updateSummary(mailbox: mailbox, uid: uid) { summary in
-            for flag in flags {
-                switch flag {
-                case .seen: summary.isRead = enabled
-                case .flagged: summary.isFlagged = enabled
-                case .answered: summary.isAnswered = enabled
-                case .draft: break
-                }
-            }
-        }
+        try database.updateFlags(
+            accountID: accountID,
+            mailbox: mailbox,
+            uid: uid,
+            isRead: flags.contains(.seen) ? enabled : nil,
+            isFlagged: flags.contains(.flagged) ? enabled : nil,
+            isAnswered: flags.contains(.answered) ? enabled : nil
+        )
     }
 
     public func move(mailbox: String, uid: UInt32, to destination: String) async throws {
+        try seedIfNeeded()
         try await simulateLatency(180)
         guard destination != mailbox else { return }
-        guard var source = messagesByMailbox[mailbox],
-              let index = source.firstIndex(where: { $0.uid == uid }) else {
+        try requireMailbox(destination)
+        guard try database.moveMessage(
+            accountID: accountID,
+            from: mailbox,
+            uid: uid,
+            to: destination
+        ) != nil else {
             throw MailError.commandFailed("That message is no longer available.")
-        }
-        guard messagesByMailbox[destination] != nil else {
-            throw MailError.commandFailed("No mailbox named \(destination).")
-        }
-
-        var summary = source.remove(at: index)
-        summary.mailbox = destination
-        messagesByMailbox[mailbox] = source
-
-        var destinationMessages = messagesByMailbox[destination] ?? []
-        destinationMessages.append(summary)
-        messagesByMailbox[destination] = destinationMessages
-
-        let oldKey = "\(mailbox)#\(uid)"
-        if var body = bodies.removeValue(forKey: oldKey) {
-            body.summary = summary
-            bodies["\(destination)#\(uid)"] = body
         }
     }
 
     public func delete(mailbox: String, uid: UInt32) async throws {
+        try seedIfNeeded()
         if mailbox == "Trash" {
-            messagesByMailbox[mailbox]?.removeAll { $0.uid == uid }
-            bodies.removeValue(forKey: "\(mailbox)#\(uid)")
+            try database.deleteMessage(accountID: accountID, mailbox: mailbox, uid: uid)
             return
         }
         try await move(mailbox: mailbox, uid: uid, to: "Trash")
     }
 
     public func send(_ message: OutgoingMessage) async throws {
+        try seedIfNeeded()
         try await simulateLatency(500)
         guard !message.allRecipients.isEmpty else {
             throw MailError.invalidMessage("Add at least one recipient.")
         }
 
-        nextUID += 1
-        let uid = nextUID
+        let uid = try database.maxUID(accountID: accountID) + 1
         let now = Date()
         let summary = MessageSummary(
             uid: uid,
@@ -142,28 +115,31 @@ public actor DemoMailService: MailService {
             attachments: attachments
         )
 
-        messagesByMailbox["Sent", default: []].append(summary)
-        bodies["Sent#\(uid)"] = body
+        try database.saveMessage(body, accountID: accountID)
     }
 
     public func close() async {}
 
     // MARK: Helpers
 
-    private func updateSummary(
-        mailbox: String,
-        uid: UInt32,
-        transform: (inout MessageSummary) -> Void
-    ) {
-        guard var list = messagesByMailbox[mailbox],
-              let index = list.firstIndex(where: { $0.uid == uid }) else {
-            return
+    private func seedIfNeeded() throws {
+        guard !seeded else { return }
+        seeded = true
+
+        let boxes = try database.loadMailboxes(accountID: accountID)
+        guard boxes.isEmpty else { return }
+
+        let seed = DemoSeed.make()
+        try database.saveMailboxes(seed.mailboxes, accountID: accountID)
+        for body in seed.bodies.values {
+            try database.saveMessage(body, accountID: accountID)
         }
-        transform(&list[index])
-        messagesByMailbox[mailbox] = list
-        if var body = bodies["\(mailbox)#\(uid)"] {
-            body.summary = list[index]
-            bodies["\(mailbox)#\(uid)"] = body
+    }
+
+    private func requireMailbox(_ path: String) throws {
+        let boxes = try database.loadMailboxes(accountID: accountID)
+        guard boxes.contains(where: { $0.path == path }) else {
+            throw MailError.commandFailed("No mailbox named \(path).")
         }
     }
 

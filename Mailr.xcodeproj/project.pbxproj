@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		0BA23E95D65F42137FA1E6BC /* MIMEHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAC7655473EEEF2447F0B545 /* MIMEHeader.swift */; };
+		0CFBAA2DC34AEA246EF9E61B /* MailDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B292CC4532EF01F036A7150 /* MailDatabase.swift */; };
 		13143357FDF663DDDFA45319 /* ComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCCE2BB7F84C6B8F6AC7F352 /* ComposeView.swift */; };
 		1DC6E923498E5E946AB22807 /* MessageBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C12BF6D378E604A5CD423D26 /* MessageBuilder.swift */; };
 		2099B20569A9DFC93226149C /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1163AD5798F175E24B35701 /* RootView.swift */; };
@@ -61,6 +62,7 @@
 
 /* Begin PBXFileReference section */
 		045BF8229696772F2F7502D9 /* MessageDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDetailView.swift; sourceTree = "<group>"; };
+		1B292CC4532EF01F036A7150 /* MailDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailDatabase.swift; sourceTree = "<group>"; };
 		25EDF06705EA715A0ECEE60D /* MailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailService.swift; sourceTree = "<group>"; };
 		27C2C86F500554041091874E /* IMAPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IMAPClient.swift; sourceTree = "<group>"; };
 		2A6DBF269731B58670BCC9DE /* MessageListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageListView.swift; sourceTree = "<group>"; };
@@ -107,6 +109,7 @@
 				27C2C86F500554041091874E /* IMAPClient.swift */,
 				2BA75A1ED25426AF679F6E96 /* IMAPMailService.swift */,
 				493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */,
+				1B292CC4532EF01F036A7150 /* MailDatabase.swift */,
 				25EDF06705EA715A0ECEE60D /* MailService.swift */,
 				C12BF6D378E604A5CD423D26 /* MessageBuilder.swift */,
 				BAC7655473EEEF2447F0B545 /* MIMEHeader.swift */,
@@ -262,6 +265,7 @@
 				F3B9C29301E47563D080EC4E /* IMAPSupport.swift in Sources */,
 				0BA23E95D65F42137FA1E6BC /* MIMEHeader.swift in Sources */,
 				E95FF9C2523BA28EDF8FA50E /* MIMEParser.swift in Sources */,
+				0CFBAA2DC34AEA246EF9E61B /* MailDatabase.swift in Sources */,
 				435E2BBDDDC2A3B48C2181F8 /* MailService.swift in Sources */,
 				1DC6E923498E5E946AB22807 /* MessageBuilder.swift in Sources */,
 				A62616F1BE6CEE5F1476327A /* Models.swift in Sources */,

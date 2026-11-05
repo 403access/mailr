@@ -177,6 +177,8 @@ final class AppModel {
     }
     #endif
 
+    private var database: MailDatabase { accountStore.database }
+
     private func loadAccounts() {
         do {
             var stored = try accountStore.load()
@@ -184,7 +186,12 @@ final class AppModel {
                 stored = [.demo]
                 try? accountStore.save(stored)
             }
-            runtimes = stored.map { AccountRuntime(account: $0) }
+            runtimes = stored.map { account in
+                // Restore the last known mailboxes so the sidebar works offline
+                // until the next network refresh completes.
+                let boxes = (try? database.loadMailboxes(accountID: account.id)) ?? []
+                return AccountRuntime(account: account, mailboxes: boxes)
+            }
         } catch {
             errorMessage = "Could not read your account list: \(error.localizedDescription)"
             runtimes = [AccountRuntime(account: .demo)]
@@ -212,6 +219,7 @@ final class AppModel {
         do {
             let service = try service(for: accountID)
             let boxes = try await service.listMailboxes()
+            try? database.saveMailboxes(boxes, accountID: accountID)
             guard let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
             runtimes[currentIndex].mailboxes = boxes
             runtimes[currentIndex].error = nil
@@ -274,11 +282,26 @@ final class AppModel {
             searchText = ""
         }
 
+        // Show the cached list immediately, then replace it with the server's
+        // response. Offline launches still have something to display.
+        if let cached = try? database.loadMessages(
+            accountID: selection.accountID,
+            mailbox: selection.mailboxPath,
+            limit: 100
+        ), messages.isEmpty || !preserveSelection {
+            messages = cached
+        }
+
         do {
             let service = try service(for: selection.accountID)
             let fetched = try await service.fetchMessages(mailbox: selection.mailboxPath, limit: 100)
             guard token == loadToken else { return }
             messages = fetched
+            try? database.replaceMessages(
+                fetched,
+                accountID: selection.accountID,
+                mailbox: selection.mailboxPath
+            )
             if preserveSelection, let id = selectedMessageID, !fetched.contains(where: { $0.id == id }) {
                 selectedMessageID = nil
                 currentMessage = nil
@@ -315,6 +338,7 @@ final class AppModel {
             let service = try service(for: selection.accountID)
             let message = try await service.fetchMessage(mailbox: summary.mailbox, uid: summary.uid)
             guard token == bodyToken, selectedMessageID == id else { return }
+            try? database.saveMessage(message, accountID: selection.accountID)
             currentMessage = message
             isLoadingBody = false
 
@@ -324,8 +348,18 @@ final class AppModel {
         } catch {
             guard token == bodyToken else { return }
             isLoadingBody = false
-            errorMessage = error.localizedDescription
-            currentMessage = MailMessage(summary: summary, text: nil, html: nil)
+
+            let cached = (try? database.loadMessage(
+                accountID: selection.accountID,
+                mailbox: summary.mailbox,
+                uid: summary.uid
+            )) ?? nil
+            if let cached {
+                currentMessage = cached
+            } else {
+                errorMessage = error.localizedDescription
+                currentMessage = MailMessage(summary: summary, text: nil, html: nil)
+            }
         }
     }
 
@@ -340,6 +374,12 @@ final class AppModel {
         if currentMessage?.id == target.id {
             currentMessage?.summary.isFlagged = next
         }
+        try? database.updateFlags(
+            accountID: accountID,
+            mailbox: target.mailbox,
+            uid: target.uid,
+            isFlagged: next
+        )
 
         Task {
             do {
@@ -355,6 +395,12 @@ final class AppModel {
                 if currentMessage?.id == target.id {
                     currentMessage?.summary.isFlagged = !next
                 }
+                try? database.updateFlags(
+                    accountID: accountID,
+                    mailbox: target.mailbox,
+                    uid: target.uid,
+                    isFlagged: !next
+                )
                 errorMessage = error.localizedDescription
             }
         }
@@ -390,6 +436,12 @@ final class AppModel {
             let current = runtimes[index.account].mailboxes[index.mailbox].unreadCount
             runtimes[index.account].mailboxes[index.mailbox].unreadCount = max(0, current + (seen ? -1 : 1))
         }
+        try? database.updateFlags(
+            accountID: resolvedAccount,
+            mailbox: message.mailbox,
+            uid: message.uid,
+            isRead: seen
+        )
 
         Task {
             do {
@@ -419,6 +471,11 @@ final class AppModel {
             do {
                 let service = try service(for: accountID)
                 try await service.delete(mailbox: target.mailbox, uid: target.uid)
+                try? database.deleteMessage(
+                    accountID: accountID,
+                    mailbox: target.mailbox,
+                    uid: target.uid
+                )
                 await loadMailboxes(for: accountID)
                 await loadMessages(preserveSelection: true)
                 if let nextSelection, messages.contains(where: { $0.id == nextSelection }) {
@@ -564,6 +621,7 @@ final class AppModel {
         try? credentials.deletePassword(for: accountID)
 
         runtimes.removeAll { $0.id == accountID }
+        try? database.deleteAccount(id: accountID)
         if selection?.accountID == accountID {
             selection = nil
             messages = []
@@ -610,7 +668,7 @@ final class AppModel {
 
         let service: any MailService
         if account.isDemo {
-            service = DemoMailService()
+            service = DemoMailService(database: database)
         } else {
             guard let password = try credentials.password(for: accountID), !password.isEmpty else {
                 throw MailError.authentication(
