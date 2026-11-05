@@ -81,41 +81,86 @@ struct RegularRootView: View {
 struct CompactRootView: View {
     @Environment(AppModel.self) private var model
     @State private var path = NavigationPath()
+    @State private var isDrawerOpen = false
+    @GestureState private var drawerDragOffset: CGFloat = 0
+
+    private let drawerWidth: CGFloat = 300
 
     var body: some View {
-        NavigationStack(path: $path) {
-            CompactMailboxListView { selection in
-                model.selection = selection
-                path.append(selection)
-            }
-            .navigationTitle("Mailr")
-            .navigationDestination(for: MailboxSelection.self) { _ in
-                MessageListView(compact: true)
-                    .mailrInlineNavigationTitle()
-            }
-            #if DEBUG
-            .onChange(of: model.selection) { _, selection in
-                guard ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] == "inbox",
-                      path.isEmpty, let selection else {
-                    return
+        ZStack(alignment: .leading) {
+            NavigationStack(path: $path) {
+                MessageListView(compact: true) {
+                    isDrawerOpen = true
                 }
-                path.append(selection)
-            }
-            .onChange(of: model.selectedMessageID) { _, messageID in
-                guard ["message", "attachment"].contains(ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] ?? ""),
-                      let messageID else {
-                    return
+                .navigationDestination(for: MessageRoute.self) { route in
+                    MessageDetailScreen(messageID: route.messageID)
                 }
-
-                Task { @MainActor in
-                    if path.isEmpty, let selection = model.selection {
-                        path.append(selection)
+                #if DEBUG
+                .onChange(of: model.selectedMessageID) { _, messageID in
+                    guard ["message", "attachment"].contains(ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] ?? ""),
+                          let messageID, path.isEmpty else {
+                        return
                     }
-                    try? await Task.sleep(nanoseconds: 400_000_000)
                     path.append(MessageRoute(messageID: messageID))
                 }
+                #endif
             }
-            #endif
+            .allowsHitTesting(!isDrawerOpen)
+            .accessibilityHidden(isDrawerOpen)
+
+            if isDrawerOpen {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeDrawer() }
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+
+                MailboxDrawer(
+                    onSelect: { selection in
+                        model.selection = selection
+                        path = NavigationPath()
+                        closeDrawer()
+                    },
+                    onClose: closeDrawer
+                )
+                .frame(width: drawerWidth)
+                .frame(maxHeight: .infinity)
+                .background {
+                    Color.mailrWindowBackground.ignoresSafeArea()
+                }
+                .offset(x: drawerDragOffset)
+                .gesture(drawerDismissGesture)
+                .transition(.move(edge: .leading))
+                .shadow(color: .black.opacity(0.18), radius: 20, x: 8)
+            }
         }
+        .animation(.spring(response: 0.34, dampingFraction: 0.88), value: isDrawerOpen)
+        .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.86), value: drawerDragOffset)
+        #if DEBUG
+        .task {
+            guard ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] == "drawer" else { return }
+            try? await Task.sleep(nanoseconds: 1_400_000_000)
+            isDrawerOpen = true
+        }
+        #endif
+    }
+
+    private var drawerDismissGesture: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .updating($drawerDragOffset) { value, state, _ in
+                state = min(0, value.translation.width)
+            }
+            .onEnded { value in
+                let shouldClose = value.translation.width < -80
+                    || value.predictedEndTranslation.width < -180
+                if shouldClose {
+                    closeDrawer()
+                }
+            }
+    }
+
+    private func closeDrawer() {
+        isDrawerOpen = false
     }
 }

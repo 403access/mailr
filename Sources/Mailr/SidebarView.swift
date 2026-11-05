@@ -93,13 +93,58 @@ struct SidebarView: View {
     }
 }
 
-// MARK: - iPhone / compact layout
+// MARK: - iPhone / compact drawer
 
-struct CompactMailboxListView: View {
+struct MailboxDrawer: View {
     @Environment(AppModel.self) private var model
     let onSelect: (MailboxSelection) -> Void
+    let onClose: () -> Void
 
     var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+            mailboxList
+            Divider()
+            footer
+        }
+        .background(Color.mailrWindowBackground)
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "envelope.fill")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Mailr")
+                    .font(.title3.weight(.bold))
+                if let account = model.activeAccount {
+                    Text(account.emailAddress)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close menu")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private var mailboxList: some View {
         List {
             if model.runtimes.isEmpty {
                 Section {
@@ -112,6 +157,7 @@ struct CompactMailboxListView: View {
 
                         Button {
                             model.showSettings = true
+                            onClose()
                         } label: {
                             Label("Add Account", systemImage: "plus")
                         }
@@ -125,19 +171,7 @@ struct CompactMailboxListView: View {
             ForEach(model.runtimes) { runtime in
                 Section {
                     ForEach(runtime.mailboxes) { mailbox in
-                        Button {
-                            onSelect(MailboxSelection(accountID: runtime.id, mailboxPath: mailbox.path))
-                        } label: {
-                            HStack(spacing: 8) {
-                                MailboxRow(mailbox: mailbox)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .foregroundStyle(.primary)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                        mailboxButton(runtime: runtime, mailbox: mailbox)
                     }
 
                     if runtime.mailboxes.isEmpty {
@@ -160,35 +194,72 @@ struct CompactMailboxListView: View {
                 }
             }
         }
-        .mailrGroupedListStyle()
-        .refreshable {
-            await model.refreshAll()
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    model.newCompose()
-                } label: {
-                    Label("New Message", systemImage: "square.and.pencil")
-                }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+    }
 
-                Menu {
-                    Button {
-                        Task { await model.refreshAll() }
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
-                    }
+    private func mailboxButton(runtime: AccountRuntime, mailbox: Mailbox) -> some View {
+        let selection = MailboxSelection(accountID: runtime.id, mailboxPath: mailbox.path)
+        let isSelected = model.selection == selection
 
-                    Button {
-                        model.showSettings = true
-                    } label: {
-                        Label("Accounts & Settings", systemImage: "gearshape")
-                    }
-                } label: {
-                    Label("More", systemImage: "ellipsis.circle")
+        return Button {
+            onSelect(selection)
+        } label: {
+            HStack(spacing: 8) {
+                MailboxRow(mailbox: mailbox)
+                Spacer(minLength: 0)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tint)
                 }
             }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .listRowBackground(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var footer: some View {
+        HStack(spacing: 4) {
+            Button {
+                model.newCompose()
+                onClose()
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .accessibilityLabel("New Message")
+
+            Spacer()
+
+            if model.isRefreshing {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.trailing, 4)
+            } else {
+                Button {
+                    Task { await model.refreshAll() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .accessibilityLabel("Refresh Mail")
+            }
+
+            Button {
+                model.showSettings = true
+                onClose()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .accessibilityLabel("Accounts & Settings")
+        }
+        .font(.system(size: 18))
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(.bar)
     }
 }
 

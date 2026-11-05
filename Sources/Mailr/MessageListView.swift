@@ -8,6 +8,7 @@ struct MessageRoute: Hashable {
 struct MessageListView: View {
     @Environment(AppModel.self) private var model
     var compact: Bool = false
+    var onOpenDrawer: (() -> Void)? = nil
 
     var body: some View {
         @Bindable var model = model
@@ -22,6 +23,16 @@ struct MessageListView: View {
         .navigationTitle(compact ? (model.activeMailbox?.name ?? "Mail") : "")
         .mailrInlineNavigationTitle()
         .toolbar {
+            #if os(iOS)
+            if let onOpenDrawer {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: onOpenDrawer) {
+                        Label("Show Mailboxes", systemImage: "line.3.horizontal")
+                    }
+                }
+            }
+            #endif
+
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     model.newCompose()
@@ -89,11 +100,19 @@ struct MessageListView: View {
     @ViewBuilder
     private var content: some View {
         if model.selection == nil {
-            EmptyStateView(
-                icon: "tray",
-                title: "No Mailbox Selected",
-                message: "Choose a mailbox to see its messages."
-            )
+            VStack(spacing: 14) {
+                EmptyStateView(
+                    icon: "tray",
+                    title: "No Mailbox Selected",
+                    message: "Choose a mailbox to see its messages."
+                )
+
+                if let onOpenDrawer {
+                    Button("Choose Mailbox", action: onOpenDrawer)
+                        .buttonStyle(.borderedProminent)
+                        .padding(.bottom, 40)
+                }
+            }
         } else if let error = model.messagesError {
             VStack(spacing: 14) {
                 EmptyStateView(

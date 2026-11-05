@@ -18,7 +18,7 @@ A native, privacy-first mail client for **iPhone and iPad**, with a macOS build 
 
 ## Features
 
-- **iPhone-first navigation.** A push-based mailbox → message → reader flow on iPhone, and a three-column split view on iPad and Mac.
+- **iPhone-first navigation.** Mailboxes live in a slide-in drawer, so the message list is the root screen; messages push into the reader. iPad and Mac use a three-column split view.
 - **Real IMAP.** Mailbox discovery, unread counts, message lists, flags, mark read/unread, flagging, moving, and deleting to Trash.
 - **Real SMTP.** Multipart text/HTML messages, attachments, In-Reply-To/References headers, and a best-effort copy in the Sent folder.
 - **A real MIME engine.** Multipart trees, base64 and quoted-printable, RFC 2047 encoded words, RFC 2231 filenames, charset conversion, and inline `cid:` images turned into data URLs.
@@ -97,7 +97,7 @@ Sources/
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
-    SidebarView.swift       Accounts, mailboxes, compact mailbox browser
+    SidebarView.swift       Accounts, mailboxes, iPhone mailbox drawer
     MessageListView.swift   Message browser and rows
     MessageDetailView.swift Reader, actions, attachment export
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)
@@ -143,7 +143,7 @@ SIMCTL_CHILD_MAILR_UI_PREVIEW=message \
   xcrun simctl launch --terminate-running-process booted app.mailr.Mailr
 ```
 
-Modes: `inbox`, `message`, `attachment`, `compose`, `settings`, `account`. The hook is compiled out of release builds.
+Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `account`. The hook is compiled out of release builds.
 
 ## Security and privacy
 
