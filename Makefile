@@ -5,7 +5,7 @@ SIM ?= iPhone 16 Pro
 TEAM ?= QML5B57EMH
 DEVICE ?= 00008101-001971222298001E
 
-.PHONY: build app run test ios-project ios-build ios-run device-build device-install clean
+.PHONY: build app run test ios-project ios-build ios-run device-build device-install docs docs-build clean
 
 build:
 	swift build
@@ -46,5 +46,11 @@ device-install: device-build
 	xcrun devicectl device process launch --device "$(DEVICE)" \
 		--terminate-existing app.mailr.Mailr
 
+docs:
+	cd website && npm start
+
+docs-build:
+	cd website && npm run build
+
 clean:
-	rm -rf .build build
+	rm -rf .build build website/build website/.docusaurus

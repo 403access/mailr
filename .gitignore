@@ -5,3 +5,8 @@ build/
 DerivedData/
 *.xcuserstate
 xcuserdata/
+
+# Docusaurus
+website/node_modules/
+website/build/
+website/.docusaurus/

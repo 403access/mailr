@@ -1,0 +1,65 @@
+/**
+ * Mailr docs theme.
+ * Brand colours are tuned for the app's blue accent on both light and dark.
+ */
+
+:root {
+  --ifm-color-primary: #2563eb;
+  --ifm-color-primary-dark: #1d4ed8;
+  --ifm-color-primary-darker: #1a46c4;
+  --ifm-color-primary-darkest: #153a9f;
+  --ifm-color-primary-light: #3b76f0;
+  --ifm-color-primary-lighter: #4b82f2;
+  --ifm-color-primary-lightest: #76a1f6;
+  --ifm-background-color: #ffffff;
+  --ifm-font-family-base: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --ifm-heading-font-weight: 700;
+  --ifm-code-font-size: 92%;
+  --docusaurus-highlighted-code-line-bg: rgba(37, 99, 235, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #7aa2ff;
+  --ifm-color-primary-dark: #5a8bff;
+  --ifm-color-primary-darker: #4a80ff;
+  --ifm-color-primary-darkest: #1f5bff;
+  --ifm-color-primary-light: #9ab9ff;
+  --ifm-color-primary-lighter: #aac4ff;
+  --ifm-color-primary-lightest: #dae5ff;
+  --ifm-background-color: #0b1120;
+  --ifm-background-surface-color: #111a2e;
+  --docusaurus-highlighted-code-line-bg: rgba(122, 162, 255, 0.16);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+.navbar {
+  backdrop-filter: saturate(180%) blur(12px);
+  background-color: rgba(255, 255, 255, 0.82);
+}
+
+[data-theme='dark'] .navbar {
+  background-color: rgba(11, 17, 32, 0.82);
+}
+
+.navbar__logo {
+  height: 28px;
+  width: 28px;
+  border-radius: 7px;
+}
+
+.navbar__title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.markdown img {
+  border-radius: 12px;
+}
+
+.markdown h1:first-child {
+  --ifm-h1-font-size: 2.4rem;
+}

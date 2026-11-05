@@ -16,6 +16,15 @@ A native, privacy-first mail client for **iPhone and iPad**, with a macOS build 
 | :---: | :---: | :---: |
 | <img src="Docs/ios-settings.png" width="280"> | <img src="Docs/ios-add-account.png" width="280"> | <img src="Docs/ios-dark-message.png" width="280"> |
 
+## Documentation
+
+Full documentation lives at **https://403access.github.io/mailr/**. The site is a Docusaurus app in `website/`, deployed to GitHub Pages by `.github/workflows/deploy-docs.yml` on every push to `main` that touches it.
+
+```bash
+make docs        # local dev server at http://localhost:3000/mailr/
+make docs-build  # production build
+```
+
 ## Features
 
 - **iPhone-first navigation.** Mailboxes live in a slide-in drawer, so the message list is the root screen; messages push into the reader. iPad and Mac use a three-column split view.
@@ -114,6 +123,8 @@ Support/Mailr.entitlements  iOS Keychain access group
 Support/Icon/               Generated app-icon masters
 Scripts/build-app.sh        macOS .app bundler
 Scripts/make-icon.sh        Regenerates the app icon (macOS + iOS)
+website/                    Docusaurus documentation site (GitHub Pages)
+.github/workflows/          Docs deployment workflow
 ```
 
 `MailCore` has no UI dependencies and can be reused. The iOS target compiles it as an embedded framework; the macOS target consumes the same sources as the `MailCore` SwiftPM library.
