@@ -31,40 +31,48 @@ struct SidebarView: View {
 
             ForEach(model.runtimes) { runtime in
                 Section {
-                    ForEach(runtime.mailboxes) { mailbox in
-                        MailboxRow(
-                            mailbox: mailbox,
-                            isSelected: model.selection == MailboxSelection(
-                                accountID: runtime.id,
-                                mailboxPath: mailbox.path
+                    if !model.isMailboxSectionCollapsed(runtime.id) {
+                        ForEach(runtime.mailboxes) { mailbox in
+                            MailboxRow(
+                                mailbox: mailbox,
+                                isSelected: model.selection == MailboxSelection(
+                                    accountID: runtime.id,
+                                    mailboxPath: mailbox.path
+                                )
                             )
-                        )
-                        .tag(MailboxSelection(accountID: runtime.id, mailboxPath: mailbox.path))
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
-                    }
-
-                    if runtime.mailboxes.isEmpty {
-                        HStack(spacing: 8) {
-                            if runtime.isLoadingMailboxes {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "exclamationmark.triangle")
-                                    .foregroundStyle(MailrTheme.amber)
-                            }
-                            Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(MailrTheme.inkTertiary)
+                            .tag(MailboxSelection(accountID: runtime.id, mailboxPath: mailbox.path))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                         }
-                        .padding(.vertical, 2)
-                        .listRowBackground(Color.clear)
+
+                        if runtime.mailboxes.isEmpty {
+                            HStack(spacing: 8) {
+                                if runtime.isLoadingMailboxes {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .foregroundStyle(MailrTheme.amber)
+                                }
+                                Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(MailrTheme.inkTertiary)
+                            }
+                            .padding(.vertical, 2)
+                            .listRowBackground(Color.clear)
+                        }
                     }
                 } header: {
                     AccountHeader(
                         runtime: runtime,
-                        isHost: model.isHostAccount(runtime.id)
+                        isHost: model.isHostAccount(runtime.id),
+                        isCollapsed: model.isMailboxSectionCollapsed(runtime.id),
+                        onToggle: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                model.toggleMailboxSection(runtime.id)
+                            }
+                        }
                     )
                 }
             }
@@ -116,6 +124,19 @@ struct SidebarView: View {
                     .buttonStyle(.mailrIcon)
                     .mailrHelp("Refresh Mail (⇧⌘R)")
                 }
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        model.toggleAllMailboxSections()
+                    }
+                } label: {
+                    Image(systemName: model.allMailboxSectionsCollapsed
+                          ? "rectangle.expand.vertical"
+                          : "rectangle.compress.vertical")
+                }
+                .buttonStyle(.mailrIcon)
+                .disabled(!model.hasMailboxSections)
+                .mailrHelp(model.allMailboxSectionsCollapsed ? "Expand All Mailboxes" : "Collapse All Mailboxes")
 
                 Button {
                     model.showSettings = true
@@ -209,29 +230,37 @@ struct MailboxDrawer: View {
                     VStack(alignment: .leading, spacing: 4) {
                         AccountHeader(
                             runtime: runtime,
-                            isHost: model.isHostAccount(runtime.id)
+                            isHost: model.isHostAccount(runtime.id),
+                            isCollapsed: model.isMailboxSectionCollapsed(runtime.id),
+                            onToggle: {
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    model.toggleMailboxSection(runtime.id)
+                                }
+                            }
                         )
                         .padding(.horizontal, 8)
 
-                        ForEach(runtime.mailboxes) { mailbox in
-                            mailboxButton(runtime: runtime, mailbox: mailbox)
-                        }
-
-                        if runtime.mailboxes.isEmpty {
-                            HStack(spacing: 8) {
-                                if runtime.isLoadingMailboxes {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Image(systemName: "exclamationmark.triangle")
-                                        .foregroundStyle(MailrTheme.amber)
-                                }
-                                Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(MailrTheme.inkTertiary)
+                        if !model.isMailboxSectionCollapsed(runtime.id) {
+                            ForEach(runtime.mailboxes) { mailbox in
+                                mailboxButton(runtime: runtime, mailbox: mailbox)
                             }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
+
+                            if runtime.mailboxes.isEmpty {
+                                HStack(spacing: 8) {
+                                    if runtime.isLoadingMailboxes {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Image(systemName: "exclamationmark.triangle")
+                                            .foregroundStyle(MailrTheme.amber)
+                                    }
+                                    Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
+                                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                                        .foregroundStyle(MailrTheme.inkTertiary)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                            }
                         }
                     }
                 }
@@ -276,6 +305,19 @@ struct MailboxDrawer: View {
             .buttonStyle(.mailrPrimary)
             .accessibilityLabel("New Message")
 
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    model.toggleAllMailboxSections()
+                }
+            } label: {
+                Image(systemName: model.allMailboxSectionsCollapsed
+                      ? "rectangle.expand.vertical"
+                      : "rectangle.compress.vertical")
+            }
+            .buttonStyle(.mailrIcon)
+            .disabled(!model.hasMailboxSections)
+            .accessibilityLabel(model.allMailboxSectionsCollapsed ? "Expand All Mailboxes" : "Collapse All Mailboxes")
+
             if model.isRefreshing {
                 ProgressView()
                     .controlSize(.small)
@@ -310,8 +352,26 @@ struct MailboxDrawer: View {
 struct AccountHeader: View {
     let runtime: AccountRuntime
     var isHost: Bool = false
+    var isCollapsed: Bool = false
+    var onToggle: (() -> Void)?
 
     var body: some View {
+        if let onToggle {
+            Button(action: onToggle) {
+                headerContent
+            }
+            .buttonStyle(.plain)
+            .mailrHelp(isCollapsed ? "Expand Mailboxes" : "Collapse Mailboxes")
+            .accessibilityLabel(
+                "\(runtime.account.displayName), \(isCollapsed ? "collapsed" : "expanded")"
+            )
+            .accessibilityHint("Expand or collapse mailboxes")
+        } else {
+            headerContent
+        }
+    }
+
+    private var headerContent: some View {
         HStack(spacing: 8) {
             AvatarView(
                 name: runtime.account.displayName,
@@ -351,7 +411,17 @@ struct AccountHeader: View {
                     .foregroundStyle(MailrTheme.amber)
                     .mailrHelp(error)
             }
+
+            if onToggle != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(MailrTheme.inkTertiary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                    .animation(.easeInOut(duration: 0.18), value: isCollapsed)
+                    .accessibilityHidden(true)
+            }
         }
+        .contentShape(Rectangle())
         .padding(.top, 8)
         .padding(.bottom, 2)
         .textCase(nil)

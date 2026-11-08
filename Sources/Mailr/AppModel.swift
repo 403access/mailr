@@ -36,6 +36,9 @@ final class AppModel {
     // Sidebar & accounts
     var runtimes: [AccountRuntime] = []
     var selection: MailboxSelection?
+    var collapsedAccountIDs: Set<UUID> = [] {
+        didSet { persistCollapsedAccountIDs() }
+    }
     var showSettings = false
     var isRefreshing = false
     var statusText: String?
@@ -66,6 +69,7 @@ final class AppModel {
     @ObservationIgnored private var services: [UUID: any MailService] = [:]
     @ObservationIgnored private var hostAccountIDs: Set<UUID> = []
     @ObservationIgnored private static let hostAccountIDsKey = "MailrHostAccountIDs"
+    @ObservationIgnored private static let collapsedAccountIDsKey = "MailrCollapsedAccountIDs"
     private(set) var isHostMode = false
     @ObservationIgnored private var loadToken = UUID()
     @ObservationIgnored private var bodyToken = UUID()
@@ -88,6 +92,9 @@ final class AppModel {
         hostAccountIDs = Set(storedHostIDs.compactMap { UUID(uuidString: $0) })
         isHostMode = !hostAccountIDs.isEmpty
 
+        let storedCollapsedIDs = UserDefaults.standard.stringArray(forKey: Self.collapsedAccountIDsKey) ?? []
+        collapsedAccountIDs = Set(storedCollapsedIDs.compactMap { UUID(uuidString: $0) })
+
         loadAccounts()
     }
 
@@ -103,6 +110,46 @@ final class AppModel {
     var activeMailbox: Mailbox? {
         guard let selection else { return nil }
         return activeRuntime?.mailboxes.first(where: { $0.path == selection.mailboxPath })
+    }
+
+    /// Accounts that currently have at least one mailbox section to show.
+    var hasMailboxSections: Bool {
+        runtimes.contains { !$0.mailboxes.isEmpty }
+    }
+
+    var allMailboxSectionsCollapsed: Bool {
+        let accounts = runtimes.filter { !$0.mailboxes.isEmpty }
+        guard !accounts.isEmpty else { return false }
+        return accounts.allSatisfy { collapsedAccountIDs.contains($0.id) }
+    }
+
+    func isMailboxSectionCollapsed(_ accountID: UUID) -> Bool {
+        collapsedAccountIDs.contains(accountID)
+    }
+
+    func toggleMailboxSection(_ accountID: UUID) {
+        if collapsedAccountIDs.contains(accountID) {
+            collapsedAccountIDs.remove(accountID)
+        } else {
+            collapsedAccountIDs.insert(accountID)
+        }
+    }
+
+    func toggleAllMailboxSections() {
+        if allMailboxSectionsCollapsed {
+            collapsedAccountIDs.removeAll()
+        } else {
+            collapsedAccountIDs = Set(
+                runtimes.filter { !$0.mailboxes.isEmpty }.map(\.id)
+            )
+        }
+    }
+
+    private func persistCollapsedAccountIDs() {
+        UserDefaults.standard.set(
+            collapsedAccountIDs.map(\.uuidString).sorted(),
+            forKey: Self.collapsedAccountIDsKey
+        )
     }
 
     var selectedSummary: MessageSummary? {
