@@ -156,10 +156,10 @@ final class AppModel {
         hostAccountIDs.contains(accountID)
     }
 
-    /// The host server reads this Keychain item when it downloads mail. The
-    /// Mac app is allowed to write it because it runs in the same user session.
-    func setHostPassword(_ password: String, for accountID: UUID) throws {
-        try credentials.setPassword(password, for: accountID)
+    /// The host server reads this file when it downloads mail. It is written
+    /// with 0600 permissions next to the host database.
+    func setHostPassword(_ password: String, for account: MailAccount) throws {
+        try HostCredentialStore().setPassword(password, forEmail: account.emailAddress)
     }
 
     func refreshHostNow() async {

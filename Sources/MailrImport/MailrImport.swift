@@ -45,6 +45,31 @@ struct MailrImportCommand {
         print("")
 
         let database = MailDatabase(fileURL: databaseURL)
+
+        if options.command == .credentials {
+            var failed = false
+            for profile in profiles {
+                print("Profile: \(profile.name)")
+                do {
+                    let summary = try ThunderbirdCredentialImporter.importCredentials(
+                        profile: profile,
+                        database: database,
+                        nssDirectory: options.nssDirectory,
+                        dryRun: options.dryRun
+                    )
+                    printCredentialSummary(summary)
+                } catch {
+                    writeError("  \(error.localizedDescription)")
+                    failed = true
+                }
+                print("")
+            }
+            if options.dryRun {
+                print("Dry run complete. No passwords were written.")
+            }
+            return failed ? 1 : 0
+        }
+
         var totalMessages = 0
         var hadIssues = false
 
@@ -68,6 +93,21 @@ struct MailrImportCommand {
             totalMessages += summary.messageCount
             hadIssues = hadIssues || !summary.issues.isEmpty
             printSummary(summary)
+
+            if options.importPasswords {
+                do {
+                    let credentialSummary = try ThunderbirdCredentialImporter.importCredentials(
+                        profile: profile,
+                        database: database,
+                        nssDirectory: options.nssDirectory,
+                        dryRun: options.importOptions.dryRun
+                    )
+                    printCredentialSummary(credentialSummary)
+                } catch {
+                    hadIssues = true
+                    writeError("  Password import: \(error.localizedDescription)")
+                }
+            }
             print("")
         }
 
@@ -147,7 +187,7 @@ struct MailrImportCommand {
 
             let logins = profile.path.appendingPathComponent("logins.json")
             if FileManager.default.fileExists(atPath: logins.path) {
-                print("  Passwords: encrypted by Thunderbird; enter them in Mailr after import.")
+                print("  Passwords: encrypted by Thunderbird; run `mailr-import credentials` to import them.")
             }
             print("")
         }
@@ -190,6 +230,39 @@ struct MailrImportCommand {
            summary.localAccountName == nil,
            summary.issues.isEmpty {
             print("  Nothing to import.")
+        }
+    }
+
+    private static func printCredentialSummary(_ summary: ThunderbirdCredentialImportSummary) {
+        if !summary.imported.isEmpty {
+            print("  Imported passwords:")
+            for email in summary.imported {
+                print("    \(email)")
+            }
+        }
+        if !summary.wouldImport.isEmpty {
+            print("  Would import passwords:")
+            for email in summary.wouldImport {
+                print("    \(email)")
+            }
+        }
+        if !summary.oauthSkipped.isEmpty {
+            print("  OAuth entries skipped (Mailr needs an app password):")
+            for entry in summary.oauthSkipped {
+                print("    \(entry)")
+            }
+        }
+        if !summary.unmatched.isEmpty {
+            print("  Unmatched Thunderbird logins:")
+            for entry in summary.unmatched {
+                print("    \(entry)")
+            }
+        }
+        if summary.imported.isEmpty,
+           summary.wouldImport.isEmpty,
+           summary.oauthSkipped.isEmpty,
+           summary.unmatched.isEmpty {
+            print("  No saved Thunderbird passwords found.")
         }
     }
 
@@ -272,10 +345,12 @@ struct MailrImportCommand {
         USAGE:
           mailr-import list [options]
           mailr-import import [options]
+          mailr-import credentials [options]
 
         COMMANDS:
           list                 Show Thunderbird profiles, accounts, and local mail folders.
           import               Import the selected profile(s). This is the default.
+          credentials          Decrypt saved Thunderbird passwords and write them to Mailr's Keychain.
 
         OPTIONS:
           --profile <name|path>  Select a profile by name, folder name, or path.
@@ -286,13 +361,16 @@ struct MailrImportCommand {
           --accounts-only        Import account settings, not local mail.
           --mail-only            Import local mail, not account settings.
           --include-imap-cache   Also import Thunderbird's offline IMAP caches.
+          --import-passwords     Also import saved Thunderbird passwords during `import`.
           --overwrite            Update Mailr accounts that already use the same email address.
+          --nss <path>           Directory containing Thunderbird's libnss3 libraries.
           --dry-run              Report what would be imported without writing anything.
           -h, --help             Show this help.
 
         NOTES:
-          Thunderbird encrypts saved passwords with NSS (logins.json + key4.db).
-          mailr-import does not decrypt them; enter passwords in Mailr after importing.
+          Saved passwords are decrypted through Thunderbird's own NSS libraries.
+          A Thunderbird primary password must be disabled or unlocked first.
+          OAuth2 entries are reported but cannot be used as Mailr passwords.
           STARTTLS-only servers are skipped unless the provider has an implicit-TLS
           default that Mailr can use instead.
         """)
@@ -305,6 +383,7 @@ private struct ImportOptions {
     enum Command {
         case list
         case importMail
+        case credentials
     }
 
     var command: Command = .importMail
@@ -315,8 +394,10 @@ private struct ImportOptions {
     var mailOnly = false
     var includeIMAPCache = false
     var overwrite = false
+    var importPasswords = false
     var dryRun = false
     var databaseURL: URL?
+    var nssDirectory: URL?
 
     var profileSelectors: [String] { profiles }
 
@@ -341,6 +422,8 @@ private struct ImportOptions {
                 command = .list
             case "import":
                 command = .importMail
+            case "credentials":
+                command = .credentials
             case "--profile":
                 index += 1
                 guard index < arguments.count else {
@@ -369,8 +452,16 @@ private struct ImportOptions {
                 includeIMAPCache = true
             case "--overwrite":
                 overwrite = true
+            case "--import-passwords":
+                importPasswords = true
             case "--dry-run":
                 dryRun = true
+            case "--nss":
+                index += 1
+                guard index < arguments.count else {
+                    throw ImportCLIError.missingValue("--nss")
+                }
+                nssDirectory = URL(fileURLWithPath: (arguments[index] as NSString).expandingTildeInPath)
             default:
                 if argument.hasPrefix("--profile=") {
                     profiles.append(String(argument.dropFirst("--profile=".count)))
@@ -378,6 +469,8 @@ private struct ImportOptions {
                     root = URL(fileURLWithPath: (String(argument.dropFirst("--root=".count)) as NSString).expandingTildeInPath)
                 } else if argument.hasPrefix("--database=") {
                     databaseURL = URL(fileURLWithPath: (String(argument.dropFirst("--database=".count)) as NSString).expandingTildeInPath)
+                } else if argument.hasPrefix("--nss=") {
+                    nssDirectory = URL(fileURLWithPath: (String(argument.dropFirst("--nss=".count)) as NSString).expandingTildeInPath)
                 } else {
                     throw ImportCLIError.unknownArgument(argument)
                 }

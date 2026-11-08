@@ -35,7 +35,7 @@ make docs-build  # production build
 - **A real MIME engine.** Multipart trees, base64 and quoted-printable, RFC 2047 encoded words, RFC 2231 filenames, charset conversion, and inline `cid:` images turned into data URLs.
 - **Safe HTML reader.** JavaScript is disabled, a strict Content Security Policy is applied, and remote images are blocked until you explicitly load them. Link clicks open in your browser.
 - **Attachments.** View, download/save with the system file exporter, or attach files while composing.
-- **Thunderbird migration.** `mailr-import` reads a Thunderbird profile, imports IMAP account settings, and copies local mbox/Maildir folders into an offline Mailr account. Existing Thunderbird passwords are encrypted with NSS, so they are entered once in Mailr after import.
+- **Thunderbird migration.** `mailr-import` reads a Thunderbird profile, imports IMAP account settings, copies local mbox/Maildir folders into an offline Mailr account, and decrypts Thunderbird's saved NSS passwords into the host credential store.
 - **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
 - **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
 - **Host server.** The Mac owns the IMAP connections: it downloads mail into its own SQLite store without deleting anything from the origin server, and clients sync accounts, mailboxes, messages, flags, and sends through it. Each opened message shows its storage location: on the mailbox, only on the host machine, or both.
@@ -98,7 +98,19 @@ swift run mailr-import import --mail-only
 swift run mailr-import import --include-imap-cache
 ```
 
-The importer covers IMAP account settings (email address, display name, username, IMAP/SMTP host, port, and TLS mode) plus local folders, POP3 stores, and optionally IMAP offline caches. Local mail becomes a **Local Mail** account that works entirely offline. Thunderbird's saved passwords are encrypted with NSS (`logins.json` + `key4.db`) and are not imported; enter them in Mailr after the import.
+The importer covers IMAP account settings (email address, display name, username, IMAP/SMTP host, port, and TLS mode) plus local folders, POP3 stores, and optionally IMAP offline caches. Local mail becomes a **Local Mail** account that works entirely offline.
+
+Thunderbird's saved passwords are encrypted with NSS (`logins.json` + `key4.db`). Mailr can decrypt them through Thunderbird's own NSS libraries and copy the matching passwords into the host credential file:
+
+```bash
+# Import passwords only
+swift run mailr-import credentials --profile default-release
+
+# Or do it during the normal import
+swift run mailr-import import --all-profiles --import-passwords
+```
+
+A Thunderbird **primary password** must be unlocked or disabled first. OAuth2 entries (for example Gmail) are recognised but cannot be used as Mailr passwords; those accounts need an app password. Unmatched entries are reported without printing any secret.
 
 Accounts that already exist with the same email address are skipped unless `--overwrite` is passed. Local mail imports are idempotent: re-running the command updates the same account and mailboxes instead of creating duplicates. Quit and reopen Mailr to see the new accounts.
 
@@ -127,7 +139,9 @@ The macOS app reads that value automatically. The iOS Simulator can use `http://
 The host server reads account settings and passwords from:
 
 1. `MAILR_ACCOUNT_*` variables in the host `.env`, or
-2. the macOS Keychain, after you set a password in **Mailr → Settings → host account → Password**.
+2. `Application Support/Mailr/host-credentials.json`, written by `mailr-import credentials` or by **Mailr → Settings → host account → Password**.
+
+The credential file is created with `0600` permissions. It is separate from the clients' Keychain entries because the background host process cannot reliably read Keychain items created by another binary without a GUI prompt.
 
 The background sync refreshes the Inbox every five minutes (`MAILR_HOST_SYNC_INTERVAL`) and keeps the newest 100 messages per mailbox (`MAILR_HOST_SYNC_LIMIT`). Set `MAILR_HOST_SYNC_ALL=1` to refresh every mailbox instead. It downloads the newest 20 bodies eagerly (`MAILR_HOST_PREFETCH`); older bodies are fetched from the origin on demand. The sync never removes mail from the origin server. User-initiated delete/move actions follow normal IMAP behavior.
 
@@ -261,10 +275,11 @@ The suite covers:
 - Legacy `accounts.json` migration into SQLite
 - `.env` parsing, provider inference, multi-account merging, and validation
 - Thunderbird profiles.ini/prefs.js parsing, IMAP/SMTP mapping, mbox and Maildir import
+- NSS credential matching, host credential-file permissions, and dry-run behaviour
 - Host server database sync, account/mailbox/message routes, action proxying, and HTTP round trips
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 94 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
+All 101 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
 
 ### Debug UI previews
 
@@ -280,7 +295,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 ## Security and privacy
 
 - Passwords live in the **macOS/iOS Keychain**, keyed by account UUID. Account metadata, cached mailboxes, message summaries, bodies, and attachments are stored in a **SQLite database** in Application Support (`Mailr/mailr.sqlite3`). Existing `accounts.json` files are imported once and renamed.
-- The optional host server keeps downloaded mail in a second SQLite database (`Mailr/host-mail.sqlite3`). It listens on `0.0.0.0:8788` for LAN clients, has no authentication, and uses plain HTTP; keep it on a trusted local network and never expose it to the public internet. It is written with `0600` permissions and the containing directory with `0700`. Host passwords are read from the host `.env` or the macOS Keychain; the server never writes them into the database.
+- The optional host server keeps downloaded mail in a second SQLite database (`Mailr/host-mail.sqlite3`). It listens on `0.0.0.0:8788` for LAN clients, has no authentication, and uses plain HTTP; keep it on a trusted local network and never expose it to the public internet. It is written with `0600` permissions and the containing directory with `0700`. Host passwords are read from the host `.env` or `host-credentials.json` (also `0600`). The server never writes them into the SQLite database.
 - The optional development `.env` file is plain text on disk. Mailr reads it at launch, copies passwords to the Keychain, and never writes them into the SQLite account table. It is git-ignored; keep its permissions restricted (for example `chmod 600 .env`).
 - TLS is handled by **Network.framework** with the system trust store and a 30-second connect timeout. Credentials are only sent after the TLS connection is established, unless the user explicitly selects the insecure plaintext option.
 - The HTML reader disables JavaScript, uses a non-persistent web data store, injects a restrictive CSP, and blocks remote images by default to prevent tracking pixels.
@@ -292,7 +307,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 - No OAuth sign-in (app passwords only).
 - No STARTTLS upgrade; direct TLS only.
 - No background push or scheduled sync. Mail refreshes on launch, when the app becomes active, on pull-to-refresh, and manually.
-- Thunderbird import does not decrypt saved passwords, does not support POP3 as a live account, and skips STARTTLS-only custom servers. Local mail import copies mbox/Maildir data; tags, address books, calendars, and filters are not imported.
+- Thunderbird password import requires the profile to be readable and not protected by a locked primary password. OAuth2 entries cannot be reused. POP3 is not supported as a live account, and STARTTLS-only custom servers are skipped. Tags, address books, calendars, and filters are not imported.
 - The host server is unauthenticated plain HTTP on the local network. It is intended for a trusted personal machine, not as a shared or internet-facing mail server.
 - Clients need the host server for new IMAP mail. Cached mail remains readable offline, but the host must be reachable to refresh or send.
 - Dark mode is not implemented yet; the app is light-only for now.

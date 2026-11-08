@@ -40,9 +40,11 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
   Thunderbird's `X-Mozilla-Status` read/flag bits.
 - **Repeatable.** Re-running the import updates the same local account and
   mailboxes instead of creating duplicates.
-
-Thunderbird stores passwords encrypted with NSS (`logins.json` + `key4.db`).
-Those are not decrypted; enter the passwords in Mailr after importing.
+- **Saved passwords.** `mailr-import credentials` decrypts Thunderbird's
+  NSS-encrypted `logins.json`/`key4.db` entries through Thunderbird's own NSS
+  libraries and writes matching passwords to the host credential file. A
+  primary password must be unlocked or disabled. OAuth2 entries cannot be
+  reused and need an app password.
 
 ## MIME
 

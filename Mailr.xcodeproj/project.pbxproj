@@ -27,6 +27,7 @@
 		5CB15F787DD91E45C1BEDA28 /* HostMailStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7442199ACD39A141E67DD66 /* HostMailStore.swift */; };
 		5FCFEBB81247EC93D9E8CEDB /* MessageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A6DBF269731B58670BCC9DE /* MessageListView.swift */; };
 		6FA1EF381CBCFC4DF800AFBC /* IMAPMailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA75A1ED25426AF679F6E96 /* IMAPMailService.swift */; };
+		70C375D29FC709FAA90C3853 /* ThunderbirdCredentialImporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DE356AC9455B27D5E16E5E1 /* ThunderbirdCredentialImporter.swift */; };
 		71D8FED8912E34875DBEB8ED /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19562D7018C7FA3D5FEE0A3 /* SettingsView.swift */; };
 		7867997B0DF8438A6E82D558 /* DemoMailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E18ACBD9F74A6D607ED31DF /* DemoMailService.swift */; };
 		7975DD040F831D1211F8C5F2 /* LocalMailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E350596C13752F9E36BB0066 /* LocalMailService.swift */; };
@@ -50,6 +51,8 @@
 		ECB5B56F9F9A07488A9722AD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52EA5C43174135F64DD28AEC /* Theme.swift */; };
 		F3937A7CD8668A4F73BBDC31 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32563F04E6956615A68024FE /* AppModel.swift */; };
 		F3B9C29301E47563D080EC4E /* IMAPSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */; };
+		F6F4C81E0C0E216683CBDCAF /* HostCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1ACA508152C6CC3EE3A63B /* HostCredentialStore.swift */; };
+		FB7CF9BFBAFB59E41323D5E6 /* ThunderbirdCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715C16146AC39E715B27C982 /* ThunderbirdCredentials.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -79,6 +82,7 @@
 /* Begin PBXFileReference section */
 		00F66C4B54A83F81E8665260 /* ThunderbirdProfiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThunderbirdProfiles.swift; sourceTree = "<group>"; };
 		045BF8229696772F2F7502D9 /* MessageDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDetailView.swift; sourceTree = "<group>"; };
+		0DE356AC9455B27D5E16E5E1 /* ThunderbirdCredentialImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThunderbirdCredentialImporter.swift; sourceTree = "<group>"; };
 		0E4DC891C0A84090376409A1 /* HostPasswordView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPasswordView.swift; sourceTree = "<group>"; };
 		1B292CC4532EF01F036A7150 /* MailDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailDatabase.swift; sourceTree = "<group>"; };
 		25EDF06705EA715A0ECEE60D /* MailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailService.swift; sourceTree = "<group>"; };
@@ -96,6 +100,7 @@
 		52EA5C43174135F64DD28AEC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		545272ED545D8F8D768628A9 /* SocketConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketConnection.swift; sourceTree = "<group>"; };
 		6BF204ABB92488F6E65AC9F3 /* AccountEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountEditorView.swift; sourceTree = "<group>"; };
+		715C16146AC39E715B27C982 /* ThunderbirdCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThunderbirdCredentials.swift; sourceTree = "<group>"; };
 		774150DAE1ABE36641853150 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
 		83D3EBBFBC7FB2AAF9380E3A /* Mailr.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Mailr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		876E4202A805A2FABD1D4325 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -103,6 +108,7 @@
 		A8A5185174D69A2A75056065 /* HostMailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMailService.swift; sourceTree = "<group>"; };
 		AC63D009D213837C63D4C43F /* MailCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = MailCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD7996F1F99E2E6CCC7A9E14 /* HTMLMessageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLMessageView.swift; sourceTree = "<group>"; };
+		AF1ACA508152C6CC3EE3A63B /* HostCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostCredentialStore.swift; sourceTree = "<group>"; };
 		B234E206BA174B0EFF53A11C /* MailrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailrApp.swift; sourceTree = "<group>"; };
 		B87FD5828FB127D6642A78FB /* ThunderbirdAccounts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThunderbirdAccounts.swift; sourceTree = "<group>"; };
 		B9423CE2DCDCFB3C404FE20C /* ThunderbirdImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThunderbirdImporter.swift; sourceTree = "<group>"; };
@@ -139,6 +145,7 @@
 			children = (
 				4E18ACBD9F74A6D607ED31DF /* DemoMailService.swift */,
 				997C315F077EF053683E4B47 /* EnvironmentAccounts.swift */,
+				AF1ACA508152C6CC3EE3A63B /* HostCredentialStore.swift */,
 				3BD38C06F2335FC61F107CC5 /* HostMailServer.swift */,
 				A8A5185174D69A2A75056065 /* HostMailService.swift */,
 				E7442199ACD39A141E67DD66 /* HostMailStore.swift */,
@@ -157,6 +164,8 @@
 				545272ED545D8F8D768628A9 /* SocketConnection.swift */,
 				FB603B1AE94FF6259C1609CB /* StableIdentifier.swift */,
 				B87FD5828FB127D6642A78FB /* ThunderbirdAccounts.swift */,
+				0DE356AC9455B27D5E16E5E1 /* ThunderbirdCredentialImporter.swift */,
+				715C16146AC39E715B27C982 /* ThunderbirdCredentials.swift */,
 				B9423CE2DCDCFB3C404FE20C /* ThunderbirdImporter.swift */,
 				39940382E4AA6174403652F3 /* ThunderbirdLocalStore.swift */,
 				00F66C4B54A83F81E8665260 /* ThunderbirdProfiles.swift */,
@@ -309,6 +318,7 @@
 			files = (
 				7867997B0DF8438A6E82D558 /* DemoMailService.swift in Sources */,
 				C3787848644C20FDB3726A80 /* EnvironmentAccounts.swift in Sources */,
+				F6F4C81E0C0E216683CBDCAF /* HostCredentialStore.swift in Sources */,
 				BAE83955316C4192F898C91D /* HostMailServer.swift in Sources */,
 				BF69307B2441C583246DF1AB /* HostMailService.swift in Sources */,
 				5CB15F787DD91E45C1BEDA28 /* HostMailStore.swift in Sources */,
@@ -327,6 +337,8 @@
 				8562F7FF096B6D92ED8C3246 /* SocketConnection.swift in Sources */,
 				1693CCA130320D9EFEC8C6D1 /* StableIdentifier.swift in Sources */,
 				393DB5AE9FDAFFF0EC1D478B /* ThunderbirdAccounts.swift in Sources */,
+				70C375D29FC709FAA90C3853 /* ThunderbirdCredentialImporter.swift in Sources */,
+				FB7CF9BFBAFB59E41323D5E6 /* ThunderbirdCredentials.swift in Sources */,
 				CF7043C477E51329EE4ED42A /* ThunderbirdImporter.swift in Sources */,
 				92B79EC543F4001E5ABB699D /* ThunderbirdLocalStore.swift in Sources */,
 				DCD8C796200BDA0D2ACC90D6 /* ThunderbirdProfiles.swift in Sources */,

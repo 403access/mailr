@@ -101,20 +101,40 @@ public actor IMAPClient {
             listings.append(Listing(path: parsed.name, flags: parsed.flags, delimiter: parsed.delimiter))
         }
 
-        var boxes: [Mailbox] = []
-        for listing in listings {
-            var box = Mailbox(
+        var boxes = listings.map { listing in
+            Mailbox(
                 path: listing.path,
                 name: IMAPSupport.displayName(for: listing.path, delimiter: listing.delimiter),
                 role: IMAPSupport.role(path: listing.path, flags: listing.flags),
                 delimiter: listing.delimiter
             )
+        }
 
-            if let status = try? await status(path: listing.path) {
-                box.totalCount = status["MESSAGES"] ?? 0
-                box.unreadCount = status["UNSEEN"] ?? 0
+        // STATUS is one round trip per folder. Large accounts can have
+        // hundreds of folders, so ask for the important roles first and stop
+        // spending time on optional counts once the budget is exhausted.
+        let statusBudget: TimeInterval = {
+            guard let raw = ProcessInfo.processInfo.environment["MAILR_IMAP_STATUS_BUDGET"],
+                  let value = TimeInterval(raw) else {
+                return 5
             }
-            boxes.append(box)
+            return max(0, value)
+        }()
+        let started = Date()
+        let order = boxes.indices.sorted {
+            boxes[$0].role.sortIndex < boxes[$1].role.sortIndex
+        }
+
+        for index in order {
+            let role = boxes[index].role
+            if role == .other, Date().timeIntervalSince(started) >= statusBudget {
+                continue
+            }
+            guard let status = try? await status(path: boxes[index].path) else {
+                continue
+            }
+            boxes[index].totalCount = status["MESSAGES"] ?? 0
+            boxes[index].unreadCount = status["UNSEEN"] ?? 0
         }
 
         return Mailbox.sorted(boxes)
@@ -133,6 +153,7 @@ public actor IMAPClient {
     private func select(mailbox: String) async throws {
         if selectedMailbox == mailbox { return }
 
+        debugLog("SELECT \(IMAPSupport.quote(mailbox))")
         let pieces = try await execute("SELECT \(IMAPSupport.quote(mailbox))")
         let lines = pieces.compactMap { piece -> String? in
             if case .line(let line) = piece { return line }
@@ -390,6 +411,13 @@ public actor IMAPClient {
                 throw MailError.connection("The server closed the session: \(line)")
             }
         }
+    }
+
+    private func debugLog(_ message: String) {
+        guard ProcessInfo.processInfo.environment["MAILR_IMAP_DEBUG"] == "1" else {
+            return
+        }
+        FileHandle.standardError.write(Data((message + "\n").utf8))
     }
 
     private func ensureOK(_ pieces: [IMAPPiece], tag: String, command: String) throws {

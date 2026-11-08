@@ -12,17 +12,25 @@ public actor SocketConnection {
     private let port: UInt16
     private let useTLS: Bool
     private let serverName: String
+    private let readTimeout: TimeInterval
     private let queue = DispatchQueue(label: "app.mailr.socket")
 
     private var connection: NWConnection?
     private var buffer = Data()
     private var closed = false
 
-    public init(host: String, port: UInt16, useTLS: Bool, serverName: String? = nil) {
+    public init(
+        host: String,
+        port: UInt16,
+        useTLS: Bool,
+        serverName: String? = nil,
+        readTimeout: TimeInterval = 60
+    ) {
         self.host = host
         self.port = port
         self.useTLS = useTLS
         self.serverName = serverName ?? host
+        self.readTimeout = readTimeout
     }
 
     public func connect(timeout: TimeInterval = 30) async throws {
@@ -148,16 +156,29 @@ public actor SocketConnection {
             throw MailError.connection("The connection is not open.")
         }
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, any Error>) in
+            let once = OneShotContinuation(continuation)
+
             connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
                 if let error {
-                    continuation.resume(throwing: MailError.connection(error.localizedDescription))
+                    once.resume(throwing: MailError.connection(error.localizedDescription))
                 } else if let data, !data.isEmpty {
-                    continuation.resume(returning: data)
+                    once.resume(returning: data)
                 } else if isComplete {
-                    continuation.resume(throwing: MailError.connection("The server closed the connection."))
+                    once.resume(throwing: MailError.connection("The server closed the connection."))
                 } else {
-                    continuation.resume(returning: Data())
+                    once.resume(returning: Data())
                 }
+            }
+
+            let timeout = readTimeout
+            let host = host
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                once.resume(
+                    throwing: MailError.connection(
+                        "Timed out waiting for a response from \(host)."
+                    )
+                )
             }
         }
     }

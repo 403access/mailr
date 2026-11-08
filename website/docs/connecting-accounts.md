@@ -36,8 +36,9 @@ Set `MAILR_HOST_SERVER=http://<mac-lan-address>:8788` in `.env` on the client.
 The host server needs each account's password in one of two places:
 
 1. `MAILR_ACCOUNT_<NAME>_PASSWORD` in the host `.env`, or
-2. the Mac Keychain, after using **Mailr → Settings → host account → Password**
-   on the Mac.
+2. `Application Support/Mailr/host-credentials.json`, written by
+   `mailr-import credentials` or by **Mailr → Settings → host account →
+   Password** on the Mac. This file is created with `0600` permissions.
 
 The background sync downloads mail into the host database but never deletes or
 expunges messages on the origin server. The newest 100 messages per mailbox are
@@ -61,17 +62,21 @@ warns when it is selected.
 Mailr ships a command-line importer that reads a local Thunderbird profile:
 
 ```bash
-swift run mailr-import list      # profiles, accounts, and local mail folders
-swift run mailr-import import    # import the default profile
-swift run mailr-import import --profile default-release --dry-run
+swift run mailr-import list          # profiles, accounts, and local mail folders
+swift run mailr-import import        # import the default profile
+swift run mailr-import import --import-passwords
+swift run mailr-import credentials   # import saved passwords only
 ```
 
 It imports IMAP account settings and copies local mbox/Maildir folders into a
-**Local Mail** account stored in Mailr's SQLite database. Passwords are not
-imported because Thunderbird encrypts them with NSS; enter them in Mailr after
-the import. Accounts that already exist with the same email address are skipped
-unless `--overwrite` is passed. POP3 accounts are imported as local mail only,
-and STARTTLS-only custom servers are skipped because Mailr uses implicit TLS.
+**Local Mail** account stored in Mailr's SQLite database. Saved passwords are
+decrypted through Thunderbird's NSS libraries and written to
+`Application Support/Mailr/host-credentials.json` with `0600` permissions. A
+Thunderbird primary password must be unlocked or disabled first; OAuth2 entries
+(for example Gmail) cannot be reused and need an app password. Accounts that
+already exist with the same email address are skipped unless `--overwrite` is
+passed. POP3 accounts are imported as local mail only, and STARTTLS-only custom
+servers are skipped because Mailr uses implicit TLS.
 
 Run `swift run mailr-import --help` for all options, and quit and reopen Mailr
 after importing.

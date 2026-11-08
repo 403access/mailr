@@ -242,7 +242,8 @@ public struct HostMailRouter: Sendable {
                 let mailbox = try text(request.query["mailbox"])
                 let limit = min(max(Int(request.query["limit"] ?? "200") ?? 200, 1), 1_000)
                 if let actions {
-                    _ = try perform {
+                    // A transient IMAP failure must not hide cached mail.
+                    _ = try? perform {
                         try await actions.refreshMailbox(
                             accountID: accountID,
                             mailbox: mailbox,
@@ -382,10 +383,12 @@ public struct HostMailRouter: Sendable {
             case ("GET", "/v1/mailboxes"):
                 let accountID = try uuid(request.query["accountID"])
                 if let actions {
-                    let mailboxes = try perform {
+                    let refreshed: [Mailbox]? = try? perform {
                         try await actions.refreshMailboxes(accountID: accountID)
                     }
-                    return .json(mailboxes)
+                    if let refreshed {
+                        return .json(refreshed)
+                    }
                 }
                 return .json(try database.loadMailboxes(accountID: accountID))
 
@@ -463,6 +466,24 @@ public struct HostMailRouter: Sendable {
         }
         return raw
     }
+}
+
+// MARK: - Connection threads
+
+private final class HostConnectionContext: @unchecked Sendable {
+    let server: HostMailServer
+    let client: Int32
+
+    init(server: HostMailServer, client: Int32) {
+        self.server = server
+        self.client = client
+    }
+}
+
+private func hostConnectionThreadMain(_ raw: UnsafeMutableRawPointer) -> UnsafeMutableRawPointer? {
+    let context = Unmanaged<HostConnectionContext>.fromOpaque(raw).takeRetainedValue()
+    context.server.runConnection(context.client)
+    return nil
 }
 
 // MARK: - Server
@@ -607,12 +628,24 @@ public final class HostMailServer: @unchecked Sendable {
             }
 
             configure(client)
-            queue.async { [weak self] in
-                guard let self else {
-                    close(client)
-                    return
-                }
-                self.handleClient(client)
+            // Each connection gets a raw pthread rather than a libdispatch
+            // worker. The router blocks while an async IMAP operation runs;
+            // blocking a dispatch worker would starve Swift's cooperative
+            // executor and deadlock the action bridge.
+            let context = Unmanaged.passRetained(
+                HostConnectionContext(server: self, client: client)
+            )
+            var thread: pthread_t?
+            let created = pthread_create(
+                &thread,
+                nil,
+                hostConnectionThreadMain,
+                context.toOpaque()
+            )
+            if created == 0, let thread {
+                pthread_detach(thread)
+            } else {
+                context.release()
                 close(client)
             }
         }
@@ -637,6 +670,11 @@ public final class HostMailServer: @unchecked Sendable {
             &timeout,
             socklen_t(MemoryLayout<timeval>.size)
         )
+    }
+
+    func runConnection(_ client: Int32) {
+        handleClient(client)
+        close(client)
     }
 
     private func handleClient(_ client: Int32) {

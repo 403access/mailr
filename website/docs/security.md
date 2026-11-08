@@ -20,8 +20,11 @@ description: How Mailr protects credentials, message rendering, and your data.
   (`Mailr/host-mail.sqlite3`) with `0600` permissions. It listens on
   `0.0.0.0:8788` for LAN clients, has no authentication, and speaks plain HTTP.
   Keep it on a trusted local network and never expose it to the internet. Host
-  passwords come from the host `.env` or the macOS Keychain, never from the
-  database.
+  passwords come from the host `.env` or
+  `Application Support/Mailr/host-credentials.json` (also `0600`), never from
+  the SQLite database. The credential file is required because a background
+  process cannot reliably read Keychain items created by another binary without
+  a GUI prompt.
 - Credentials are only sent after the TLS connection is established, unless the
   user explicitly selects the insecure plaintext option.
 - The optional development `.env` file is plain text on disk. Mailr reads it at

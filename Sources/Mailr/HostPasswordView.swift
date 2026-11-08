@@ -119,7 +119,7 @@ struct HostPasswordView: View {
 
         Task {
             do {
-                try model.setHostPassword(password, for: account.id)
+                try model.setHostPassword(password, for: account)
                 await model.refreshHostNow()
                 dismiss()
             } catch {

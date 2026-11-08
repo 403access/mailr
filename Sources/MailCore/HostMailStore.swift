@@ -326,7 +326,8 @@ public struct HTTPHostMailStore: HostMailStore {
     public func mailboxes(accountID: UUID) async throws -> [Mailbox] {
         try await get(
             "v1/mailboxes",
-            query: [URLQueryItem(name: "accountID", value: accountID.uuidString)]
+            query: [URLQueryItem(name: "accountID", value: accountID.uuidString)],
+            timeout: 60
         )
     }
 
@@ -356,7 +357,8 @@ public struct HTTPHostMailStore: HostMailStore {
                 URLQueryItem(name: "accountID", value: accountID.uuidString),
                 URLQueryItem(name: "mailbox", value: mailbox),
                 URLQueryItem(name: "limit", value: String(limit))
-            ]
+            ],
+            timeout: 60
         )
     }
 
@@ -368,7 +370,8 @@ public struct HTTPHostMailStore: HostMailStore {
     public func storedMessage(accountID: UUID, mailbox: String, uid: UInt32) async throws -> MailMessage? {
         let response: HostMessageResponse = try await get(
             "v1/messages",
-            query: messageQuery(accountID: accountID, mailbox: mailbox, uid: uid)
+            query: messageQuery(accountID: accountID, mailbox: mailbox, uid: uid),
+            timeout: 90
         )
         return response.message
     }

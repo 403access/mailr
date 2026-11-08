@@ -86,11 +86,12 @@ public actor HostMailSyncEngine: HostMailActions {
     }
 
     private let database: MailDatabase
-    private let credentials: any CredentialStore
+    private let hostCredentials: HostCredentialStore
     private let configuration: Configuration
 
     private var accounts: [MailAccount]
     private var environmentPasswords: [String: String]
+    private var filePasswords: [String: String]
     private var services: [UUID: IMAPMailService] = [:]
     private var serviceAccounts: [UUID: MailAccount] = [:]
     private var servicePasswords: [UUID: String] = [:]
@@ -104,11 +105,11 @@ public actor HostMailSyncEngine: HostMailActions {
 
     public init(
         database: MailDatabase,
-        credentials: any CredentialStore = KeychainCredentialStore(),
+        hostCredentials: HostCredentialStore = HostCredentialStore(),
         configuration: Configuration = Configuration()
     ) {
         self.database = database
-        self.credentials = credentials
+        self.hostCredentials = hostCredentials
         self.configuration = configuration
 
         var environmentAccounts: [EnvironmentAccount] = []
@@ -126,6 +127,13 @@ public actor HostMailSyncEngine: HostMailActions {
         }
         self.accounts = merged
         self.environmentPasswords = Self.passwordMap(environmentAccounts)
+        self.filePasswords = hostCredentials.load()
+    }
+
+    /// Reloads passwords written by `mailr-import credentials` or the Mac app.
+    /// This is cheap and lets a password take effect without restarting.
+    public func reloadCredentials() {
+        filePasswords = hostCredentials.load()
     }
 
     // MARK: Lifecycle
@@ -224,6 +232,7 @@ public actor HostMailSyncEngine: HostMailActions {
         }
 
         environmentPasswords = Self.passwordMap(environmentAccounts)
+        filePasswords = hostCredentials.load()
         var stored = (try? database.loadAccounts()) ?? accounts
         stored = EnvironmentAccounts.merge(environmentAccounts, into: stored)
         if stored != accounts {
@@ -252,7 +261,9 @@ public actor HostMailSyncEngine: HostMailActions {
         }
 
         let service = try await service(for: account)
-        let boxes = try await service.listMailboxes()
+        let boxes = try await retrying {
+            try await service.listMailboxes()
+        }
         try database.saveMailboxes(boxes, accountID: accountID)
         mailboxListFreshness[accountID] = Date()
         return boxes
@@ -304,10 +315,12 @@ public actor HostMailSyncEngine: HostMailActions {
         }
 
         let service = try await service(for: account)
-        let summaries = try await service.fetchMessages(
-            mailbox: mailbox,
-            limit: scopedLimit
-        )
+        let summaries = try await retrying {
+            try await service.fetchMessages(
+                mailbox: mailbox,
+                limit: scopedLimit
+            )
+        }
 
         // If the window covered the whole mailbox, anything previously known
         // and no longer listed is now host-only.
@@ -386,7 +399,9 @@ public actor HostMailSyncEngine: HostMailActions {
         }
 
         let service = try await service(for: account)
-        let message = try await service.fetchMessage(mailbox: mailbox, uid: uid)
+        let message = try await retrying {
+            try await service.fetchMessage(mailbox: mailbox, uid: uid)
+        }
         try database.saveMessage(message, accountID: accountID)
         return message
     }
@@ -471,15 +486,31 @@ public actor HostMailSyncEngine: HostMailActions {
         return service
     }
 
+    /// A stale or reset IMAP socket is common when the host has been idle.
+    /// Retry read-only operations once; the service reconnects on the next try.
+    private func retrying<T>(_ operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch let error as MailError {
+            switch error {
+            case .connection, .protocolViolation:
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                return try await operation()
+            default:
+                throw error
+            }
+        }
+    }
+
     private func password(for account: MailAccount) throws -> String {
         if let password = environmentPasswords[account.emailAddress.lowercased()], !password.isEmpty {
             return password
         }
-        if let password = try credentials.password(for: account.id), !password.isEmpty {
+        if let password = filePasswords[account.emailAddress.lowercased()], !password.isEmpty {
             return password
         }
         throw MailError.authentication(
-            "The host has no password for \(account.emailAddress). Add one in the Mac app or the host .env file."
+            "The host has no password for \(account.emailAddress). Import Thunderbird credentials or add one in the Mac app."
         )
     }
 
