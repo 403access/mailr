@@ -89,6 +89,40 @@ The macOS app is built with Swift Package Manager and assembled into a proper `.
 
 Mailr deliberately uses **implicit TLS** (IMAP 993 / SMTP 465). STARTTLS-only endpoints are not supported yet, so providers that require SMTP submission on port 587 (for example Outlook/Microsoft 365) can receive mail but cannot send through Mailr. The “None (insecure)” option exists only for local development servers; Mailr warns when it is selected.
 
+## Local accounts from .env
+
+For development, you can preload any number of mailboxes from a local `.env` file instead of entering each account in the UI. Copy the template and add one block per mailbox:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+$EDITOR .env
+```
+
+```dotenv
+MAILR_ACCOUNT_GMAIL_EMAIL=you@gmail.com
+MAILR_ACCOUNT_GMAIL_PASSWORD="your google app password"
+MAILR_ACCOUNT_GMAIL_NAME=Personal
+
+MAILR_ACCOUNT_WORK_EMAIL=you@example.com
+MAILR_ACCOUNT_WORK_PASSWORD="your password"
+MAILR_ACCOUNT_WORK_PROVIDER=custom
+MAILR_ACCOUNT_WORK_IMAP_HOST=imap.example.com
+MAILR_ACCOUNT_WORK_SMTP_HOST=smtp.example.com
+```
+
+Only `EMAIL` is required. Mailr infers iCloud, Gmail, Yahoo, Fastmail, and Zoho from the domain; set `PROVIDER` and the IMAP/SMTP hosts for anything else. Optional `_NAME`, `_ID`, `_IMAP_PORT`, `_IMAP_SECURITY`, `_IMAP_USERNAME`, and matching `_SMTP_*` values override the defaults. Security values are `tls` or `plaintext`.
+
+At launch Mailr reads the first of these files that exists:
+
+1. `MAILR_ENV_FILE` (explicit path in the process environment)
+2. `.env` in the current directory
+3. `Mailr.env` inside the app bundle (`make app` copies `.env` there)
+4. `Application Support/Mailr/.env`
+5. `~/.config/mailr/.env`
+
+`MAILR_ACCOUNT_*` variables in the process environment override the file. Accounts defined in `.env` are added or updated on every launch; accounts that are not in `.env` are left alone. Removing a block does **not** delete the local account or its cached mail. Passwords go to the **Keychain**, never to the SQLite account table or `accounts.json`. Because a `.env` file is plain text, keep it out of version control (it is already git-ignored) and restrict its permissions.
+
 ## Architecture
 
 ```
@@ -104,6 +138,7 @@ Sources/
     MessageBuilder.swift    RFC 5322 / MIME composition
     SocketConnection.swift  Async TLS byte stream on Network.framework
     MailService.swift       Service protocol, account store, Keychain store
+    EnvironmentAccounts.swift .env parser and account importer
     MailDatabase.swift      Synchronous SQLite store for local mail data
     DemoMailService.swift   Seeded offline mailbox
   Mailr/                    SwiftUI app
@@ -149,9 +184,10 @@ The suite covers:
 - MIME message building, header-injection defense, CRLF correctness
 - Account, mailbox, message, body, and attachment persistence in SQLite
 - Legacy `accounts.json` migration into SQLite
+- `.env` parsing, provider inference, multi-account merging, and validation
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 32 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
+All 66 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
 
 ### Debug UI previews
 
@@ -167,6 +203,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 ## Security and privacy
 
 - Passwords live in the **macOS/iOS Keychain**, keyed by account UUID. Account metadata, cached mailboxes, message summaries, bodies, and attachments are stored in a **SQLite database** in Application Support (`Mailr/mailr.sqlite3`). Existing `accounts.json` files are imported once and renamed.
+- The optional development `.env` file is plain text on disk. Mailr reads it at launch, copies passwords to the Keychain, and never writes them into the SQLite account table. It is git-ignored; keep its permissions restricted (for example `chmod 600 .env`).
 - TLS is handled by **Network.framework** with the system trust store and a 30-second connect timeout. Credentials are only sent after the TLS connection is established, unless the user explicitly selects the insecure plaintext option.
 - The HTML reader disables JavaScript, uses a non-persistent web data store, injects a restrictive CSP, and blocks remote images by default to prevent tracking pixels.
 - **App Lock** is optional and off by default. Once enabled, authentication runs through **LocalAuthentication** (Face ID, Touch ID, or the device passcode). Mailr only receives success or failure; biometric data never leaves the device. With App Lock enabled, Mailr locks at launch and whenever it returns from the background; the preference is stored in `UserDefaults`.

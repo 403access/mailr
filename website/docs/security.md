@@ -18,6 +18,10 @@ description: How Mailr protects credentials, message rendering, and your data.
   sandbox and the operating system's device encryption.
 - Credentials are only sent after the TLS connection is established, unless the
   user explicitly selects the insecure plaintext option.
+- The optional development `.env` file is plain text on disk. Mailr reads it at
+  launch, copies passwords to the Keychain, and never writes them into the
+  SQLite account table. `.env` is git-ignored; keep its permissions restricted
+  (for example `chmod 600 .env`).
 
 ## App Lock
 

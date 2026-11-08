@@ -21,10 +21,39 @@ The suite covers:
 - MIME message building, header-injection defense, CRLF correctness
 - Account, mailbox, message, body, and attachment persistence in SQLite
 - Legacy `accounts.json` migration into SQLite
+- `.env` parsing, provider inference, multi-account merging, and validation
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 32 tests pass on macOS. The iOS app itself is verified by building and
+All 66 tests pass on macOS. The iOS app itself is verified by building and
 launching in the simulator.
+
+## Local accounts from .env
+
+For development, copy `.env.example` to `.env` and add a block per mailbox:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+```dotenv
+MAILR_ACCOUNT_GMAIL_EMAIL=you@gmail.com
+MAILR_ACCOUNT_GMAIL_PASSWORD="your google app password"
+
+MAILR_ACCOUNT_WORK_EMAIL=you@example.com
+MAILR_ACCOUNT_WORK_PASSWORD="your password"
+MAILR_ACCOUNT_WORK_PROVIDER=custom
+MAILR_ACCOUNT_WORK_IMAP_HOST=imap.example.com
+MAILR_ACCOUNT_WORK_SMTP_HOST=smtp.example.com
+```
+
+Only `EMAIL` is required. Well-known domains infer their provider; custom
+servers need `IMAP_HOST` and `SMTP_HOST`. `MAILR_ENV_FILE` selects an explicit
+file, and `MAILR_ACCOUNT_*` process environment variables override file values.
+Passwords are written to the Keychain, not to the SQLite account table. `.env`
+is git-ignored; never commit it.
+
+See the main README for the full search order and supported overrides.
 
 ## Debug UI previews
 

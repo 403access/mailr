@@ -32,6 +32,11 @@ ios-run: ios-build
 	open -a Simulator 2>/dev/null || true
 	xcrun simctl bootstatus "$(SIM)" -b
 	xcrun simctl install "$(SIM)" build/DerivedData/Build/Products/Debug-iphonesimulator/Mailr.app
+	@if [ -f .env ]; then \
+		DATA_DIR=$$(xcrun simctl get_app_container "$(SIM)" app.mailr.Mailr data); \
+		mkdir -p "$$DATA_DIR/Library/Application Support/Mailr"; \
+		cp .env "$$DATA_DIR/Library/Application Support/Mailr/.env"; \
+	fi
 	xcrun simctl launch --terminate-running-process "$(SIM)" app.mailr.Mailr
 
 device-build:

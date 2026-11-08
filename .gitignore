@@ -6,6 +6,11 @@ DerivedData/
 *.xcuserstate
 xcuserdata/
 
+# Local mail account credentials (never commit)
+.env
+.env.*
+!.env.example
+
 # Docusaurus
 website/node_modules/
 website/build/

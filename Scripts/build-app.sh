@@ -15,6 +15,12 @@ cp "$BIN_PATH/Mailr" "$APP/Contents/MacOS/Mailr"
 cp Support/Info.plist "$APP/Contents/Info.plist"
 cp Support/Icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
+# Optional local account setup. .env is git-ignored; copying it lets the
+# macOS app find it at runtime without relying on the launch directory.
+if [ -f .env ]; then
+    cp .env "$APP/Contents/Resources/Mailr.env"
+fi
+
 # Ad-hoc signing lets macOS treat the app as a stable application for
 # Keychain access and WebKit. It is not distribution signing.
 codesign --force --sign - --timestamp=none "$APP" >/dev/null 2>&1 || true

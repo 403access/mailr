@@ -195,6 +195,9 @@ final class AppModel {
                 stored = [.demo]
                 try? accountStore.save(stored)
             }
+
+            applyEnvironmentAccounts(to: &stored)
+
             runtimes = stored.map { account in
                 // Restore the last known mailboxes so the sidebar works offline
                 // until the next network refresh completes.
@@ -204,6 +207,45 @@ final class AppModel {
         } catch {
             errorMessage = "Could not read your account list: \(error.localizedDescription)"
             runtimes = [AccountRuntime(account: .demo)]
+        }
+    }
+
+    /// Imports accounts from the optional local `.env` file. Passwords are
+    /// written to the Keychain; only account metadata is stored in SQLite.
+    private func applyEnvironmentAccounts(to accounts: inout [MailAccount]) {
+        let imported: [EnvironmentAccount]
+        do {
+            imported = try EnvironmentAccounts.load()
+        } catch {
+            errorMessage = ".env: \(error.localizedDescription)"
+            return
+        }
+
+        guard !imported.isEmpty else { return }
+
+        let merged = EnvironmentAccounts.merge(imported, into: accounts)
+        if merged != accounts {
+            accounts = merged
+            do {
+                try accountStore.save(accounts)
+            } catch {
+                errorMessage = "Could not save the accounts from .env: \(error.localizedDescription)"
+            }
+        }
+
+        for entry in imported {
+            guard let password = entry.password, !password.isEmpty else { continue }
+
+            let accountID = accounts.first(where: {
+                $0.id == entry.account.id
+                    || $0.emailAddress.caseInsensitiveCompare(entry.account.emailAddress) == .orderedSame
+            })?.id ?? entry.account.id
+
+            do {
+                try credentials.setPassword(password, for: accountID)
+            } catch {
+                errorMessage = "Could not save the .env password for \(entry.account.emailAddress): \(error.localizedDescription)"
+            }
         }
     }
 
