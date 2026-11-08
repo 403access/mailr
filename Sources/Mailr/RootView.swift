@@ -95,20 +95,32 @@ struct RootView: View {
 }
 
 struct RegularRootView: View {
+    @Environment(AppModel.self) private var model
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView()
-                .mailrSidebarWidth()
-        } content: {
-            MessageListView()
-                .mailrListWidth()
-        } detail: {
-            MessageDetailView()
-                .mailrDetailWidth()
+        if model.isShowingOverview {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SidebarView()
+                    .mailrSidebarWidth()
+            } detail: {
+                OverviewView()
+                    .mailrDetailWidth()
+            }
+            .navigationSplitViewStyle(.balanced)
+        } else {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SidebarView()
+                    .mailrSidebarWidth()
+            } content: {
+                MessageListView()
+                    .mailrListWidth()
+            } detail: {
+                MessageDetailView()
+                    .mailrDetailWidth()
+            }
+            .navigationSplitViewStyle(.balanced)
         }
-        .navigationSplitViewStyle(.balanced)
     }
 }
 
@@ -123,8 +135,16 @@ struct CompactRootView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             NavigationStack(path: $path) {
-                MessageListView(compact: true) {
-                    isDrawerOpen = true
+                Group {
+                    if model.isShowingOverview {
+                        OverviewView(compact: true) {
+                            isDrawerOpen = true
+                        }
+                    } else {
+                        MessageListView(compact: true) {
+                            isDrawerOpen = true
+                        }
+                    }
                 }
                 .navigationDestination(for: MessageRoute.self) { route in
                     MessageDetailScreen(messageID: route.messageID)
@@ -152,7 +172,12 @@ struct CompactRootView: View {
 
                 MailboxDrawer(
                     onSelect: { selection in
-                        model.selection = selection
+                        model.selectMailbox(selection)
+                        path = NavigationPath()
+                        closeDrawer()
+                    },
+                    onSelectOverview: {
+                        model.showOverview()
                         path = NavigationPath()
                         closeDrawer()
                     },

@@ -7,7 +7,16 @@ struct SidebarView: View {
     var body: some View {
         @Bindable var model = model
 
-        List(selection: $model.selection) {
+        List(selection: Binding(
+            get: { model.isShowingOverview ? nil : model.selection },
+            set: { newValue in
+                if let newValue {
+                    model.selectMailbox(newValue)
+                } else if !model.isShowingOverview {
+                    model.selection = nil
+                }
+            }
+        )) {
             Section {
                 HStack(spacing: 10) {
                     MailrLogoMark(size: 32)
@@ -27,6 +36,22 @@ struct SidebarView: View {
                 .padding(.vertical, 6)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+            }
+
+            Section {
+                Button {
+                    model.showOverview()
+                } label: {
+                    OverviewSidebarRow(
+                        isSelected: model.isShowingOverview,
+                        unreadCount: model.totalUnreadInAllMailboxes
+                    )
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
+                .accessibilityAddTraits(model.isShowingOverview ? .isSelected : [])
             }
 
             ForEach(model.runtimes) { runtime in
@@ -158,6 +183,7 @@ struct SidebarView: View {
 struct MailboxDrawer: View {
     @Environment(AppModel.self) private var model
     let onSelect: (MailboxSelection) -> Void
+    let onSelectOverview: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -225,6 +251,24 @@ struct MailboxDrawer: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
+
+                Button(action: onSelectOverview) {
+                    HStack(spacing: 8) {
+                        OverviewSidebarRow(
+                            isSelected: model.isShowingOverview,
+                            unreadCount: model.totalUnreadInAllMailboxes
+                        )
+                        Spacer(minLength: 0)
+                        if model.isShowingOverview {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(MailrTheme.accent)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(model.isShowingOverview ? .isSelected : [])
 
                 ForEach(model.runtimes) { runtime in
                     VStack(alignment: .leading, spacing: 4) {
@@ -348,6 +392,58 @@ struct MailboxDrawer: View {
 }
 
 // MARK: - Rows
+
+struct OverviewSidebarRow: View {
+    let isSelected: Bool
+    let unreadCount: Int
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        isSelected
+                            ? AnyShapeStyle(MailrTheme.accentGradient)
+                            : AnyShapeStyle(MailrTheme.surfaceSoft)
+                    )
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(isSelected ? Color.white : MailrTheme.inkSecondary)
+            }
+            .frame(width: 26, height: 26)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Overview")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isSelected ? MailrTheme.accentDeep : MailrTheme.ink)
+                Text("All accounts")
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
+            }
+            .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            if unreadCount > 0 {
+                CountBadge(count: unreadCount)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? AnyShapeStyle(MailrTheme.selectionGradient) : AnyShapeStyle(Color.clear))
+        }
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(MailrTheme.accent.opacity(0.18), lineWidth: 1)
+            }
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
 
 struct AccountHeader: View {
     let runtime: AccountRuntime

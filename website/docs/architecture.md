@@ -37,6 +37,7 @@ Sources/
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
     SidebarView.swift       Accounts, mailboxes, iPhone mailbox drawer
+    OverviewView.swift      Stats dashboard across all accounts and mailboxes
     MessageListView.swift   Message browser and rows
     MessageDetailView.swift Reader, actions, attachment export
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)

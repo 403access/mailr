@@ -19,6 +19,18 @@ public enum MailDatabaseError: LocalizedError, Sendable {
 
 // MARK: - Database
 
+/// A cached message summary together with the account it belongs to. Used by
+/// the overview screen to aggregate mail across every account.
+public struct StoredMessageSummary: Hashable, Sendable {
+    public var accountID: UUID
+    public var summary: MessageSummary
+
+    public init(accountID: UUID, summary: MessageSummary) {
+        self.accountID = accountID
+        self.summary = summary
+    }
+}
+
 /// A small, synchronous SQLite store for accounts, mailboxes, message
 /// summaries, bodies, and attachments.
 ///
@@ -527,6 +539,36 @@ public final class MailDatabase: @unchecked Sendable {
             var messages: [MessageSummary] = []
             while try step(statement) {
                 messages.append(messageSummary(from: statement))
+            }
+            return messages
+        }
+    }
+
+    /// Loads the newest cached summaries across every account. The overview
+    /// screen uses this to show activity and senders without opening each
+    /// mailbox separately.
+    public func loadRecentMessages(limit: Int = 2_000) throws -> [StoredMessageSummary] {
+        try withDatabase { database in
+            let statement = try prepare(database, """
+            SELECT account_id, uid, mailbox, subject, from_json, to_json, cc_json, date,
+                   snippet, size, is_read, is_flagged, is_answered, has_attachments,
+                   message_id, in_reply_to, references_json, on_mailbox
+            FROM messages
+            ORDER BY date DESC
+            LIMIT ?;
+            """)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int64(statement, 1, Int64(max(0, limit)))
+
+            var messages: [StoredMessageSummary] = []
+            while try step(statement) {
+                guard let accountID = UUID(uuidString: text(statement, 0) ?? "") else {
+                    continue
+                }
+                messages.append(StoredMessageSummary(
+                    accountID: accountID,
+                    summary: messageSummary(from: statement, startingAt: 1)
+                ))
             }
             return messages
         }
@@ -1170,25 +1212,28 @@ public final class MailDatabase: @unchecked Sendable {
         return Data(bytes: bytes, count: count)
     }
 
-    private func messageSummary(from statement: OpaquePointer) -> MessageSummary {
+    private func messageSummary(
+        from statement: OpaquePointer,
+        startingAt offset: Int32 = 0
+    ) -> MessageSummary {
         MessageSummary(
-            uid: UInt32(clamping: sqlite3_column_int64(statement, 0)),
-            mailbox: text(statement, 1) ?? "",
-            subject: text(statement, 2) ?? "",
-            from: (try? decode([EmailAddress].self, text(statement, 3))) ?? [],
-            to: (try? decode([EmailAddress].self, text(statement, 4))) ?? [],
-            cc: (try? decode([EmailAddress].self, text(statement, 5))) ?? [],
-            date: Date(timeIntervalSince1970: sqlite3_column_double(statement, 6)),
-            snippet: text(statement, 7) ?? "",
-            size: Int(sqlite3_column_int64(statement, 8)),
-            isRead: sqlite3_column_int(statement, 9) != 0,
-            isFlagged: sqlite3_column_int(statement, 10) != 0,
-            isAnswered: sqlite3_column_int(statement, 11) != 0,
-            hasAttachments: sqlite3_column_int(statement, 12) != 0,
-            messageID: text(statement, 13),
-            inReplyTo: text(statement, 14),
-            references: (try? decode([String].self, text(statement, 15))) ?? [],
-            isOnMailbox: sqlite3_column_int(statement, 16) != 0
+            uid: UInt32(clamping: sqlite3_column_int64(statement, offset + 0)),
+            mailbox: text(statement, offset + 1) ?? "",
+            subject: text(statement, offset + 2) ?? "",
+            from: (try? decode([EmailAddress].self, text(statement, offset + 3))) ?? [],
+            to: (try? decode([EmailAddress].self, text(statement, offset + 4))) ?? [],
+            cc: (try? decode([EmailAddress].self, text(statement, offset + 5))) ?? [],
+            date: Date(timeIntervalSince1970: sqlite3_column_double(statement, offset + 6)),
+            snippet: text(statement, offset + 7) ?? "",
+            size: Int(sqlite3_column_int64(statement, offset + 8)),
+            isRead: sqlite3_column_int(statement, offset + 9) != 0,
+            isFlagged: sqlite3_column_int(statement, offset + 10) != 0,
+            isAnswered: sqlite3_column_int(statement, offset + 11) != 0,
+            hasAttachments: sqlite3_column_int(statement, offset + 12) != 0,
+            messageID: text(statement, offset + 13),
+            inReplyTo: text(statement, offset + 14),
+            references: (try? decode([String].self, text(statement, offset + 15))) ?? [],
+            isOnMailbox: sqlite3_column_int(statement, offset + 16) != 0
         )
     }
 

@@ -79,6 +79,40 @@ final class MailDatabaseTests: XCTestCase {
         XCTAssertEqual(message.attachments.first?.data, Data("attached bytes".utf8))
     }
 
+    func testRecentMessagesSpanEveryAccount() throws {
+        let directory = makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("mailr.sqlite3")
+        let database = MailDatabase(fileURL: url)
+
+        let first = makeAccount()
+        let second = makeAccount()
+
+        func save(uid: UInt32, mailbox: String, subject: String, date: Date, account: MailAccount) throws {
+            let summary = MessageSummary(
+                uid: uid,
+                mailbox: mailbox,
+                subject: subject,
+                from: [EmailAddress(address: "sender@example.com")],
+                date: date
+            )
+            try database.saveMessage(
+                MailMessage(summary: summary, text: subject),
+                accountID: account.id
+            )
+        }
+
+        try save(uid: 1, mailbox: "INBOX", subject: "Older", date: Date(timeIntervalSince1970: 1_000), account: first)
+        try save(uid: 2, mailbox: "Sent", subject: "Newest", date: Date(timeIntervalSince1970: 3_000), account: second)
+        try save(uid: 3, mailbox: "INBOX", subject: "Middle", date: Date(timeIntervalSince1970: 2_000), account: first)
+
+        let recent = try database.loadRecentMessages(limit: 2)
+        XCTAssertEqual(recent.map(\.summary.subject), ["Newest", "Middle"])
+        XCTAssertEqual(recent.first?.accountID, second.id)
+        XCTAssertEqual(recent.last?.accountID, first.id)
+        XCTAssertEqual(recent.first?.summary.mailbox, "Sent")
+    }
+
     func testFlagsAndDeletionUpdateCachedState() throws {
         let directory = makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

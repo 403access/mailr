@@ -11,6 +11,9 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
 - **iPhone-first navigation.** Mailboxes live in a slide-in drawer, so the
   message list is the root screen; messages push into the reader.
 - **iPad and Mac** use a three-column split view.
+- **Overview dashboard.** A single page aggregates message and unread counts,
+  recent activity, top senders, and per-account and per-mailbox breakdowns
+  across every account. Open it from the sidebar or with ⌘0.
 
 ## Mail
 

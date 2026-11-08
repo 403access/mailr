@@ -43,6 +43,12 @@ final class AppModel {
     var isRefreshing = false
     var statusText: String?
 
+    // Overview
+    var isShowingOverview = false
+    var overviewMessages: [StoredMessageSummary] = []
+    var isLoadingOverview = false
+    var overviewError: String?
+
     // Message list
     var messages: [MessageSummary] = []
     var selectedMessageID: String?
@@ -173,6 +179,20 @@ final class AppModel {
             partial + runtime.mailboxes
                 .filter { $0.role == .inbox }
                 .reduce(0) { $0 + $1.unreadCount }
+        }
+    }
+
+    /// Unread mail across every mailbox, including Junk and Archive. Used by
+    /// the overview screen, which deliberately looks beyond the inbox.
+    var totalUnreadInAllMailboxes: Int {
+        runtimes.reduce(0) { partial, runtime in
+            partial + runtime.mailboxes.reduce(0) { $0 + $1.unreadCount }
+        }
+    }
+
+    var totalMessagesInAllMailboxes: Int {
+        runtimes.reduce(0) { partial, runtime in
+            partial + runtime.mailboxes.reduce(0) { $0 + $1.totalCount }
         }
     }
 
@@ -309,6 +329,9 @@ final class AppModel {
         }
 
         switch mode {
+        case "overview":
+            showOverview()
+            await loadOverview()
         case "inbox":
             await loadMessages()
         case "message":
@@ -465,9 +488,50 @@ final class AppModel {
         for runtime in runtimes {
             await loadMailboxes(for: runtime.id)
         }
-        if selection != nil {
+        if isShowingOverview {
+            await loadOverview()
+        } else if selection != nil {
             await loadMessages(preserveSelection: true)
         }
+    }
+
+    // MARK: - Overview
+
+    /// Opens the dashboard that aggregates stats from every account.
+    func showOverview() {
+        isShowingOverview = true
+        selectedMessageID = nil
+        currentMessage = nil
+        currentStorage = nil
+        searchText = ""
+    }
+
+    /// Selects a mailbox and leaves the overview. Callers should prefer this
+    /// over assigning `selection` directly so the two screens stay in sync.
+    func selectMailbox(_ selection: MailboxSelection) {
+        isShowingOverview = false
+        self.selection = selection
+    }
+
+    /// Loads the newest cached summaries from every account. The overview
+    /// reads them off the main actor because the database is synchronous.
+    func loadOverview() async {
+        isLoadingOverview = true
+        overviewError = nil
+
+        let database = self.database
+        let result = await Task.detached(priority: .userInitiated) {
+            () -> (messages: [StoredMessageSummary]?, error: String?) in
+            do {
+                return (try database.loadRecentMessages(limit: 2_000), nil)
+            } catch {
+                return (nil, error.localizedDescription)
+            }
+        }.value
+
+        overviewMessages = result.messages ?? overviewMessages
+        overviewError = result.error
+        isLoadingOverview = false
     }
 
     // MARK: - App Lock

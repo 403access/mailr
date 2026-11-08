@@ -30,6 +30,7 @@ make docs-build  # production build
 ## Features
 
 - **iPhone-first navigation.** Mailboxes live in a slide-in drawer, so the message list is the root screen; messages push into the reader. iPad and Mac use a three-column split view.
+- **Overview dashboard.** One page aggregates message and unread counts, recent activity, top senders, and per-account and per-mailbox breakdowns across every account.
 - **Real IMAP.** Mailbox discovery, unread counts, message lists, flags, mark read/unread, flagging, moving, and deleting to Trash.
 - **Real SMTP.** Multipart text/HTML messages, attachments, In-Reply-To/References headers, and a best-effort copy in the Sent folder.
 - **A real MIME engine.** Multipart trees, base64 and quoted-printable, RFC 2047 encoded words, RFC 2231 filenames, charset conversion, and inline `cid:` images turned into data URLs.
@@ -232,6 +233,7 @@ Sources/
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
     SidebarView.swift       Accounts, mailboxes, iPhone mailbox drawer
+    OverviewView.swift      Stats dashboard across all accounts and mailboxes
     MessageListView.swift   Message browser and rows
     MessageDetailView.swift Reader, storage location, actions, attachment export
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)

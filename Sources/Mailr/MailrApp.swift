@@ -31,6 +31,11 @@ struct MailrApp: App {
             }
 
             CommandGroup(after: .toolbar) {
+                Button("Overview") {
+                    model.showOverview()
+                }
+                .keyboardShortcut("0", modifiers: .command)
+
                 Button("Refresh Mail") {
                     Task { await model.refreshAll() }
                 }

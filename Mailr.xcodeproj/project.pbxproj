@@ -23,6 +23,7 @@
 		45F4769DFFE58F94C44B4CF6 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876E4202A805A2FABD1D4325 /* SidebarView.swift */; };
 		4DACD6E4BE2EA4FF5E0FE099 /* MailCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC63D009D213837C63D4C43F /* MailCore.framework */; };
 		520E8B2B4BDF9B2B509B97B7 /* HostMailSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA49518C63F83681AC93BB1 /* HostMailSync.swift */; };
+		57F1B6AF67BF97A8F254F021 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8CE4518E1D5D884A85D365 /* OverviewView.swift */; };
 		5BDFF83CC22004DFA242AB1C /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774150DAE1ABE36641853150 /* Platform.swift */; };
 		5CB15F787DD91E45C1BEDA28 /* HostMailStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7442199ACD39A141E67DD66 /* HostMailStore.swift */; };
 		5FCFEBB81247EC93D9E8CEDB /* MessageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A6DBF269731B58670BCC9DE /* MessageListView.swift */; };
@@ -120,6 +121,7 @@
 		CC70D28DEA54E65DB3E903F4 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		CC989D2AAE2E013B7B218EF1 /* MIMEParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIMEParser.swift; sourceTree = "<group>"; };
 		D1163AD5798F175E24B35701 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		DF8CE4518E1D5D884A85D365 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		E350596C13752F9E36BB0066 /* LocalMailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMailService.swift; sourceTree = "<group>"; };
 		E7442199ACD39A141E67DD66 /* HostMailStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMailStore.swift; sourceTree = "<group>"; };
 		EE1B53D9BFB70D07B2FA4153 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
@@ -196,6 +198,7 @@
 				B234E206BA174B0EFF53A11C /* MailrApp.swift */,
 				045BF8229696772F2F7502D9 /* MessageDetailView.swift */,
 				2A6DBF269731B58670BCC9DE /* MessageListView.swift */,
+				DF8CE4518E1D5D884A85D365 /* OverviewView.swift */,
 				774150DAE1ABE36641853150 /* Platform.swift */,
 				D1163AD5798F175E24B35701 /* RootView.swift */,
 				C5E3062BF64301E4E5B7B4B6 /* SecuritySettingsView.swift */,
@@ -360,6 +363,7 @@
 				40B28395C187256B81821C38 /* MailrApp.swift in Sources */,
 				3FD80A0A643C85A47DB1380D /* MessageDetailView.swift in Sources */,
 				5FCFEBB81247EC93D9E8CEDB /* MessageListView.swift in Sources */,
+				57F1B6AF67BF97A8F254F021 /* OverviewView.swift in Sources */,
 				5BDFF83CC22004DFA242AB1C /* Platform.swift in Sources */,
 				2099B20569A9DFC93226149C /* RootView.swift in Sources */,
 				8AB498D0D25A645B2DC79EA3 /* SecuritySettingsView.swift in Sources */,
