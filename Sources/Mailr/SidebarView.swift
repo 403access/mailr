@@ -323,6 +323,11 @@ struct AccountHeader: View {
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .tracking(1)
                         .foregroundStyle(MailrTheme.accent.opacity(0.70))
+                } else if runtime.account.provider == .local {
+                    Text("LOCAL MAIL")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .tracking(1)
+                        .foregroundStyle(MailrTheme.accent.opacity(0.70))
                 }
             }
 

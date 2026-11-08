@@ -8,6 +8,9 @@ description: Known gaps and possible next steps for Mailr.
 
 - No OAuth sign-in (app passwords only).
 - No STARTTLS upgrade; direct TLS only.
+- Thunderbird import does not decrypt saved passwords, cannot use POP3 as a live
+  account, and skips STARTTLS-only custom servers. Tags, address books,
+  calendars, and message filters are not imported.
 - No background push or scheduled sync. Mail refreshes on launch, when the app
   becomes active, on pull-to-refresh, and manually.
 - The local cache stores the newest 100 messages per mailbox; older mail is

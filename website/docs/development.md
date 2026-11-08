@@ -22,11 +22,19 @@ The suite covers:
 - Account, mailbox, message, body, and attachment persistence in SQLite
 - Legacy `accounts.json` migration into SQLite
 - `.env` parsing, provider inference, multi-account merging, and validation
+- Thunderbird profiles.ini/prefs.js parsing, IMAP/SMTP mapping, mbox and Maildir import
 - Host archive database syncing, storage flags, request routing, and an HTTP round trip
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 74 tests pass on macOS. The iOS app itself is verified by building and
+All 90 tests pass on macOS. The iOS app itself is verified by building and
 launching in the simulator.
+
+The Thunderbird importer is a separate SwiftPM executable:
+
+```bash
+swift run mailr-import list
+swift run mailr-import import --dry-run
+```
 
 ## Host archive
 

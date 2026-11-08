@@ -20,10 +20,17 @@ Sources/
     SocketConnection.swift  Async TLS byte stream on Network.framework
     MailService.swift       Service protocol, account store, Keychain store
     MailDatabase.swift      Synchronous SQLite store for local mail data
+    LocalMailService.swift  MailService backed by imported local mail
+    ThunderbirdProfiles.swift Thunderbird profiles.ini and prefs.js parsing
+    ThunderbirdAccounts.swift Thunderbird account/local-folder mapping
+    ThunderbirdLocalStore.swift mbox and Maildir scanning and parsing
+    ThunderbirdImporter.swift Account and local-mail import orchestration
+    StableIdentifier.swift  Deterministic account UUIDs for imports
     HostMailStore.swift     Host archive configuration, wire types, HTTP client
     HostMailServer.swift    Loopback HTTP server and request router
     DemoMailService.swift   Seeded offline mailbox
   MailrServer/              Standalone host archive executable
+  MailrImport/              mailr-import command-line tool
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
@@ -55,9 +62,10 @@ as an embedded framework; the macOS target consumes the same sources as the
 
 The app layer is a thin `MainActor` model over the service protocol. Views never
 talk to a socket directly: `AppModel` owns the current account, mailbox, message
-list, and selection, and calls into an `IMAPMailService` (or `DemoMailService` in
-demo mode). Reads and writes go through `MailDatabase`, a small synchronous
-SQLite store serialized with a recursive lock.
+list, and selection, and calls into an `IMAPMailService` (or `DemoMailService`
+for the demo and `LocalMailService` for imported local mail). Reads and writes go
+through `MailDatabase`, a small synchronous SQLite store serialized with a
+recursive lock.
 
 ## Connection flow
 

@@ -5,7 +5,10 @@ SIM ?= iPhone 16 Pro
 TEAM ?= QML5B57EMH
 DEVICE ?= 00008101-001971222298001E
 
-.PHONY: build app run server test ios-project ios-build ios-run device-build device-install docs docs-build clean
+.PHONY: build app run server test thunderbird-import ios-project ios-build ios-run device-build device-install docs docs-build clean
+
+# Pass CLI arguments with ARGS, for example: make thunderbird-import ARGS="list"
+ARGS ?=
 
 build:
 	swift build
@@ -21,6 +24,9 @@ server:
 
 test:
 	swift test
+
+thunderbird-import:
+	swift run mailr-import $(ARGS)
 
 ios-project:
 	xcodegen generate

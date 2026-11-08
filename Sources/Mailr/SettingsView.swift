@@ -108,7 +108,11 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) { pendingDeletion = nil }
         } message: { account in
-            Text("Mailr will remove \(account.emailAddress) and its saved password from this Mac. Messages stay on the server.")
+            if account.provider == .local {
+                Text("Mailr will remove \(account.displayName) and the imported mail stored on this device.")
+            } else {
+                Text("Mailr will remove \(account.emailAddress) and its saved password from this Mac. Messages stay on the server.")
+            }
         }
     }
 
@@ -323,6 +327,11 @@ struct SettingsView: View {
                     Text("Offline demo account")
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(MailrTheme.inkTertiary)
+                } else if runtime.account.provider == .local {
+                    Text("Local mail archive · \(runtime.mailboxes.count) mailbox\(runtime.mailboxes.count == 1 ? "" : "es")")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
+                        .lineLimit(1)
                 } else {
                     Text("\(runtime.account.provider.displayName) · IMAP \(runtime.account.incoming.host.isEmpty ? "not configured" : runtime.account.incoming.host)")
                         .font(.system(size: 10, weight: .medium, design: .rounded))
@@ -334,10 +343,12 @@ struct SettingsView: View {
             Spacer()
 
             if runtime.account.isDemo == false {
-                Button("Edit") {
-                    editingRequest = AccountEditorRequest(account: runtime.account)
+                if runtime.account.provider != .local {
+                    Button("Edit") {
+                        editingRequest = AccountEditorRequest(account: runtime.account)
+                    }
+                    .controlSize(.small)
                 }
-                .controlSize(.small)
 
                 Button {
                     pendingDeletion = runtime.account

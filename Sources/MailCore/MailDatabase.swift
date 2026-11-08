@@ -588,6 +588,61 @@ public final class MailDatabase: @unchecked Sendable {
         }
     }
 
+    /// Atomically replaces a mailbox with complete messages. Used by local
+    /// imports, where the database is the only source of truth.
+    public func replaceMailbox(
+        _ messages: [MailMessage],
+        accountID: UUID,
+        mailbox: String
+    ) throws {
+        try withDatabase { database in
+            try transactionLocked {
+                for table in ["attachments", "message_bodies", "messages"] {
+                    let statement = try prepare(database, """
+                    DELETE FROM \(table)
+                    WHERE account_id = ? AND mailbox = ?;
+                    """)
+                    bind(statement, 1, accountID.uuidString)
+                    bind(statement, 2, mailbox)
+                    try run(statement)
+                    sqlite3_finalize(statement)
+                }
+
+                for message in messages {
+                    try saveMessageLocked(message, accountID: accountID, database: database)
+                }
+            }
+        }
+    }
+
+    /// Deletes a mailbox and everything cached for it.
+    public func deleteMailbox(accountID: UUID, mailbox: String) throws {
+        try withDatabase { _ in
+            try transactionLocked {
+                let database = try handleLocked()
+                for table in ["attachments", "message_bodies", "messages"] {
+                    let statement = try prepare(database, """
+                    DELETE FROM \(table)
+                    WHERE account_id = ? AND mailbox = ?;
+                    """)
+                    bind(statement, 1, accountID.uuidString)
+                    bind(statement, 2, mailbox)
+                    try run(statement)
+                    sqlite3_finalize(statement)
+                }
+
+                let boxes = try prepare(
+                    database,
+                    "DELETE FROM mailboxes WHERE account_id = ? AND path = ?;"
+                )
+                bind(boxes, 1, accountID.uuidString)
+                bind(boxes, 2, mailbox)
+                try run(boxes)
+                sqlite3_finalize(boxes)
+            }
+        }
+    }
+
     /// Records a mailbox snapshot on the host archive.
     ///
     /// Messages in `messages` are known to be present in the actual mailbox.
@@ -766,54 +821,75 @@ public final class MailDatabase: @unchecked Sendable {
     public func saveMessage(_ message: MailMessage, accountID: UUID) throws {
         try withDatabase { database in
             try transactionLocked {
-                try upsertSummaryLocked(message.summary, accountID: accountID)
+                try saveMessageLocked(message, accountID: accountID, database: database)
+            }
+        }
+    }
 
-                let body = try prepare(database, """
-                INSERT INTO message_bodies (account_id, mailbox, uid, text, html)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
-                    text = excluded.text,
-                    html = excluded.html;
-                """)
-                bind(body, 1, accountID.uuidString)
-                bind(body, 2, message.summary.mailbox)
-                sqlite3_bind_int64(body, 3, Int64(message.summary.uid))
-                bind(body, 4, message.text)
-                bind(body, 5, message.html)
-                try run(body)
-                sqlite3_finalize(body)
-
-                let clear = try prepare(
-                    database,
-                    "DELETE FROM attachments WHERE account_id = ? AND mailbox = ? AND uid = ?;"
-                )
-                bind(clear, 1, accountID.uuidString)
-                bind(clear, 2, message.summary.mailbox)
-                sqlite3_bind_int64(clear, 3, Int64(message.summary.uid))
-                try run(clear)
-                sqlite3_finalize(clear)
-
-                for (index, attachment) in message.attachments.enumerated() {
-                    let statement = try prepare(database, """
-                    INSERT INTO attachments (
-                        account_id, mailbox, uid, attachment_id, filename,
-                        mime_type, data, is_inline, content_id, sort_index
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """)
-                    bind(statement, 1, accountID.uuidString)
-                    bind(statement, 2, message.summary.mailbox)
-                    sqlite3_bind_int64(statement, 3, Int64(message.summary.uid))
-                    bind(statement, 4, attachment.id.uuidString)
-                    bind(statement, 5, attachment.filename)
-                    bind(statement, 6, attachment.mimeType)
-                    bindBlob(statement, 7, attachment.data)
-                    sqlite3_bind_int(statement, 8, attachment.isInline ? 1 : 0)
-                    bind(statement, 9, attachment.contentID)
-                    sqlite3_bind_int64(statement, 10, Int64(index))
-                    try run(statement)
-                    sqlite3_finalize(statement)
+    /// Saves many complete messages in one transaction. Local mail imports use
+    /// this to avoid one transaction per message.
+    public func saveMessages(_ messages: [MailMessage], accountID: UUID) throws {
+        guard !messages.isEmpty else { return }
+        try withDatabase { database in
+            try transactionLocked {
+                for message in messages {
+                    try saveMessageLocked(message, accountID: accountID, database: database)
                 }
             }
+        }
+    }
+
+    private func saveMessageLocked(
+        _ message: MailMessage,
+        accountID: UUID,
+        database: OpaquePointer
+    ) throws {
+        try upsertSummaryLocked(message.summary, accountID: accountID)
+
+        let body = try prepare(database, """
+        INSERT INTO message_bodies (account_id, mailbox, uid, text, html)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
+            text = excluded.text,
+            html = excluded.html;
+        """)
+        bind(body, 1, accountID.uuidString)
+        bind(body, 2, message.summary.mailbox)
+        sqlite3_bind_int64(body, 3, Int64(message.summary.uid))
+        bind(body, 4, message.text)
+        bind(body, 5, message.html)
+        try run(body)
+        sqlite3_finalize(body)
+
+        let clear = try prepare(
+            database,
+            "DELETE FROM attachments WHERE account_id = ? AND mailbox = ? AND uid = ?;"
+        )
+        bind(clear, 1, accountID.uuidString)
+        bind(clear, 2, message.summary.mailbox)
+        sqlite3_bind_int64(clear, 3, Int64(message.summary.uid))
+        try run(clear)
+        sqlite3_finalize(clear)
+
+        for (index, attachment) in message.attachments.enumerated() {
+            let statement = try prepare(database, """
+            INSERT INTO attachments (
+                account_id, mailbox, uid, attachment_id, filename,
+                mime_type, data, is_inline, content_id, sort_index
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """)
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, message.summary.mailbox)
+            sqlite3_bind_int64(statement, 3, Int64(message.summary.uid))
+            bind(statement, 4, attachment.id.uuidString)
+            bind(statement, 5, attachment.filename)
+            bind(statement, 6, attachment.mimeType)
+            bindBlob(statement, 7, attachment.data)
+            sqlite3_bind_int(statement, 8, attachment.isInline ? 1 : 0)
+            bind(statement, 9, attachment.contentID)
+            sqlite3_bind_int64(statement, 10, Int64(index))
+            try run(statement)
+            sqlite3_finalize(statement)
         }
     }
 

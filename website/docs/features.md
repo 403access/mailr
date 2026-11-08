@@ -28,6 +28,21 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
   each opened message shows whether it is on the mailbox, only in the host
   archive, or both.
 
+## Migrating from Thunderbird
+
+- **Account import.** `mailr-import` reads a Thunderbird profile's
+  `profiles.ini` and `prefs.js` and imports IMAP/SMTP servers, usernames, email
+  addresses, and display names.
+- **Local mail import.** Local folders, POP3 stores, and optionally IMAP offline
+  caches are copied into an offline **Local Mail** account. mbox and Maildir are
+  both supported, including nested `.sbd` folders, attachments, flags, and
+  Thunderbird's `X-Mozilla-Status` read/flag bits.
+- **Repeatable.** Re-running the import updates the same local account and
+  mailboxes instead of creating duplicates.
+
+Thunderbird stores passwords encrypted with NSS (`logins.json` + `key4.db`).
+Those are not decrypted; enter the passwords in Mailr after importing.
+
 ## MIME
 
 - **A real MIME engine.** Multipart trees, base64 and quoted-printable,

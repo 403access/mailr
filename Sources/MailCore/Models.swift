@@ -128,6 +128,8 @@ public enum ProviderKind: String, Codable, CaseIterable, Sendable, Identifiable 
     case fastmail
     case zoho
     case custom
+    /// Mail imported from another client and stored only on this device.
+    case local
 
     public var id: String { rawValue }
 
@@ -140,6 +142,7 @@ public enum ProviderKind: String, Codable, CaseIterable, Sendable, Identifiable 
         case .fastmail: "Fastmail"
         case .zoho: "Zoho"
         case .custom: "Custom"
+        case .local: "Local Mail"
         }
     }
 
@@ -159,12 +162,14 @@ public enum ProviderKind: String, Codable, CaseIterable, Sendable, Identifiable 
             "IMAP and SMTP servers must support direct TLS (993/465)."
         case .demo:
             "A local, offline mailbox for trying Mailr."
+        case .local:
+            "Mail imported from another client. Stored only on this device."
         }
     }
 
     public var incomingDefaults: ServerSettings? {
         switch self {
-        case .demo:
+        case .demo, .local:
             nil
         case .icloud:
             ServerSettings(host: "imap.mail.me.com", port: 993, security: .tls, username: "")
@@ -183,7 +188,7 @@ public enum ProviderKind: String, Codable, CaseIterable, Sendable, Identifiable 
 
     public var outgoingDefaults: ServerSettings? {
         switch self {
-        case .demo:
+        case .demo, .local:
             nil
         case .icloud:
             ServerSettings(host: "smtp.mail.me.com", port: 465, security: .tls, username: "")
@@ -197,6 +202,30 @@ public enum ProviderKind: String, Codable, CaseIterable, Sendable, Identifiable 
             ServerSettings(host: "smtp.zoho.com", port: 465, security: .tls, username: "")
         case .custom:
             ServerSettings(host: "", port: 465, security: .tls, username: "")
+        }
+    }
+
+    /// Infers a provider from a well-known email domain. Anything else is
+    /// treated as a custom server.
+    public static func inferred(forEmail email: String) -> ProviderKind {
+        let domain = email
+            .split(separator: "@", omittingEmptySubsequences: true)
+            .last?
+            .lowercased() ?? ""
+
+        switch domain {
+        case "icloud.com", "me.com", "mac.com":
+            return .icloud
+        case "gmail.com", "googlemail.com":
+            return .gmail
+        case "yahoo.com", "ymail.com", "rocketmail.com":
+            return .yahoo
+        case "fastmail.com", "fastmail.fm":
+            return .fastmail
+        case "zoho.com":
+            return .zoho
+        default:
+            return .custom
         }
     }
 }

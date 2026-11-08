@@ -35,6 +35,7 @@ make docs-build  # production build
 - **A real MIME engine.** Multipart trees, base64 and quoted-printable, RFC 2047 encoded words, RFC 2231 filenames, charset conversion, and inline `cid:` images turned into data URLs.
 - **Safe HTML reader.** JavaScript is disabled, a strict Content Security Policy is applied, and remote images are blocked until you explicitly load them. Link clicks open in your browser.
 - **Attachments.** View, download/save with the system file exporter, or attach files while composing.
+- **Thunderbird migration.** `mailr-import` reads a Thunderbird profile, imports IMAP account settings, and copies local mbox/Maildir folders into an offline Mailr account. Existing Thunderbird passwords are encrypted with NSS, so they are entered once in Mailr after import.
 - **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
 - **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
 - **Optional host archive.** A small loopback HTTP server on your Mac stores every message the client retrieves, including mail that later disappears from the IMAP mailbox. Each opened message shows its storage location: on the mailbox, only on the host machine, or both.
@@ -74,6 +75,34 @@ make app        # builds the .app bundle only
 ```
 
 The macOS app is built with Swift Package Manager and assembled into a proper `.app` by `Scripts/build-app.sh`. It shares `MailCore` and essentially all SwiftUI views with iOS.
+
+### Import from Thunderbird
+
+`mailr-import` is a command-line tool that reads Thunderbird's `profiles.ini` and `prefs.js`, then writes accounts and local mail into the same SQLite database the app uses.
+
+```bash
+# See what is available
+swift run mailr-import list
+
+# Import the default profile into Mailr's normal database
+swift run mailr-import import
+
+# Pick a profile and preview the result first
+swift run mailr-import import --profile default-release --dry-run
+
+# Import only account settings, or only local mail
+swift run mailr-import import --accounts-only
+swift run mailr-import import --mail-only
+
+# Also copy Thunderbird's offline IMAP caches (can be very large)
+swift run mailr-import import --include-imap-cache
+```
+
+The importer covers IMAP account settings (email address, display name, username, IMAP/SMTP host, port, and TLS mode) plus local folders, POP3 stores, and optionally IMAP offline caches. Local mail becomes a **Local Mail** account that works entirely offline. Thunderbird's saved passwords are encrypted with NSS (`logins.json` + `key4.db`) and are not imported; enter them in Mailr after the import.
+
+Accounts that already exist with the same email address are skipped unless `--overwrite` is passed. Local mail imports are idempotent: re-running the command updates the same account and mailboxes instead of creating duplicates. Quit and reopen Mailr to see the new accounts.
+
+Use `swift run mailr-import --help` for all options, including `--root`, `--database`, and multi-profile selection with `--all-profiles`.
 
 ### Host archive (optional)
 
@@ -162,11 +191,18 @@ Sources/
     SocketConnection.swift  Async TLS byte stream on Network.framework
     MailService.swift       Service protocol, account store, Keychain store
     EnvironmentAccounts.swift .env parser and account importer
+    ThunderbirdProfiles.swift Thunderbird profiles.ini and prefs.js parsing
+    ThunderbirdAccounts.swift Thunderbird account/local-folder mapping
+    ThunderbirdLocalStore.swift mbox and Maildir scanning and parsing
+    ThunderbirdImporter.swift Account and local-mail import orchestration
+    StableIdentifier.swift  Deterministic account UUIDs for imports
     MailDatabase.swift      Synchronous SQLite store for local mail data
+    LocalMailService.swift  MailService backed by imported local mail
     HostMailStore.swift     Host archive configuration, wire types, HTTP client
     HostMailServer.swift    Loopback HTTP server and request router
     DemoMailService.swift   Seeded offline mailbox
   MailrServer/              Standalone host archive executable
+  MailrImport/              mailr-import command-line tool
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
@@ -213,10 +249,11 @@ The suite covers:
 - Account, mailbox, message, body, and attachment persistence in SQLite
 - Legacy `accounts.json` migration into SQLite
 - `.env` parsing, provider inference, multi-account merging, and validation
+- Thunderbird profiles.ini/prefs.js parsing, IMAP/SMTP mapping, mbox and Maildir import
 - Host archive database syncing, storage flags, request routing, and an HTTP round trip
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 74 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
+All 90 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
 
 ### Debug UI previews
 
@@ -244,6 +281,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 - No OAuth sign-in (app passwords only).
 - No STARTTLS upgrade; direct TLS only.
 - No background push or scheduled sync. Mail refreshes on launch, when the app becomes active, on pull-to-refresh, and manually.
+- Thunderbird import does not decrypt saved passwords, does not support POP3 as a live account, and skips STARTTLS-only custom servers. Local mail import copies mbox/Maildir data; tags, address books, calendars, and filters are not imported.
 - The host archive is optional, unauthenticated, and loopback-first. It is intended for a trusted personal machine, not as a shared mail server.
 - Dark mode is not implemented yet; the app is light-only for now.
 - Message lists fetch the newest 100 messages and search is local. There is no server-side search yet.

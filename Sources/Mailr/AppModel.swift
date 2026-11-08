@@ -298,7 +298,7 @@ final class AppModel {
             let service = try service(for: accountID)
             let boxes = try await service.listMailboxes()
             try? database.saveMailboxes(boxes, accountID: accountID)
-            if let hostStore {
+            if let hostStore, account.provider != .local {
                 try? await hostStore.saveMailboxes(boxes, accountID: accountID)
             }
             guard let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
@@ -423,9 +423,10 @@ final class AppModel {
             let fetched = try await service.fetchMessages(mailbox: selection.mailboxPath, limit: 100)
             guard token == loadToken else { return }
 
+            let isLocalAccount = runtimes.first(where: { $0.id == selection.accountID })?.account.provider == .local
             var visible = fetched
             for index in visible.indices {
-                visible[index].isOnMailbox = true
+                visible[index].isOnMailbox = !isLocalAccount
             }
 
             // Ask the host archive for everything it holds in this mailbox,
@@ -435,7 +436,7 @@ final class AppModel {
             var merged = visible
             let visibleIDs = Set(visible.map(\.id))
             var hostOnly: [MessageSummary] = []
-            if let hostStore {
+            if let hostStore, !isLocalAccount {
                 let snapshot = try? await hostStore.mailboxSnapshot(
                     accountID: selection.accountID,
                     mailbox: selection.mailboxPath,
@@ -530,20 +531,22 @@ final class AppModel {
             onDevice: false
         )
 
+        let isLocalAccount = runtimes.first(where: { $0.id == selection.accountID })?.account.provider == .local
+
         do {
             let service = try service(for: selection.accountID)
             let fetchedMessage = try await service.fetchMessage(mailbox: summary.mailbox, uid: summary.uid)
             guard token == bodyToken, selectedMessageID == id else { return }
 
             var message = fetchedMessage
-            message.summary.isOnMailbox = true
+            message.summary.isOnMailbox = !isLocalAccount
             try? database.saveMessage(message, accountID: selection.accountID)
-            updateSummary(id: id) { $0.isOnMailbox = true }
+            updateSummary(id: id) { $0.isOnMailbox = !isLocalAccount }
 
             // Mirror the full message to the host archive. Failing to reach
             // the archive must never make the mailbox unreadable.
             var onHost = false
-            if let hostStore {
+            if let hostStore, !isLocalAccount {
                 do {
                     try await hostStore.storeMessage(message, accountID: selection.accountID)
                     onHost = true
@@ -555,7 +558,7 @@ final class AppModel {
             guard token == bodyToken, selectedMessageID == id else { return }
             currentMessage = message
             currentStorage = MessageStorageStatus(
-                onMailbox: true,
+                onMailbox: !isLocalAccount,
                 onHost: onHost,
                 onDevice: true
             )
@@ -574,7 +577,7 @@ final class AppModel {
             // Prefer the host archive, then the local cache.
             var onHost = false
             var loaded: MailMessage?
-            if let hostStore,
+            if let hostStore, !isLocalAccount,
                let hostMessage = try? await hostStore.storedMessage(
                    accountID: selection.accountID,
                    mailbox: summary.mailbox,
@@ -812,8 +815,19 @@ final class AppModel {
     }
 
     func replyToCurrentMessage() {
-        guard let message = currentMessage ?? selectedSummary.map({ MailMessage(summary: $0) }),
-              let accountID = accountID(forMailbox: message.summary.mailbox) ?? selection?.accountID else {
+        guard let message = currentMessage ?? selectedSummary.map({ MailMessage(summary: $0) }) else {
+            return
+        }
+
+        let preferredID = accountID(forMailbox: message.summary.mailbox) ?? selection?.accountID
+        let accountID = preferredID.flatMap { id in
+            runtimes.first(where: { $0.id == id && $0.account.provider != .local })?.id
+        } ?? runtimes.first(where: {
+            $0.account.provider != .local && !$0.account.isDemo
+        })?.id
+
+        guard let accountID else {
+            errorMessage = "Add a mail account before replying to imported mail."
             return
         }
 
@@ -851,8 +865,19 @@ final class AppModel {
     }
 
     func newCompose() {
-        let accountID = selection?.accountID ?? runtimes.first?.id
-        guard let accountID else { return }
+        let preferredID = selection?.accountID
+        let accountID = preferredID.flatMap { id in
+            runtimes.first(where: { $0.id == id && $0.account.provider != .local })?.id
+        } ?? runtimes.first(where: {
+            $0.account.provider != .local && !$0.account.isDemo
+        })?.id ?? runtimes.first(where: {
+            $0.account.provider != .local
+        })?.id
+
+        guard let accountID else {
+            flash("Add a mail account to compose a message.")
+            return
+        }
         compose = ComposeDraft(accountID: accountID)
     }
 
@@ -964,6 +989,10 @@ final class AppModel {
             let service = DemoMailService()
             return try await service.listMailboxes().count
         }
+        if account.provider == .local {
+            let service = LocalMailService(database: database, accountID: account.id)
+            return try await service.listMailboxes().count
+        }
         guard !password.isEmpty else {
             throw MailError.authentication("Enter the account password first.")
         }
@@ -991,6 +1020,8 @@ final class AppModel {
         let service: any MailService
         if account.isDemo {
             service = DemoMailService(database: database)
+        } else if account.provider == .local {
+            service = LocalMailService(database: database, accountID: accountID)
         } else {
             guard let password = try credentials.password(for: accountID), !password.isEmpty else {
                 throw MailError.authentication(

@@ -155,7 +155,7 @@ struct AccountEditorView: View {
 
             fieldRow("Provider") {
                 Picker("Provider", selection: $account.provider) {
-                    ForEach(ProviderKind.allCases.filter { $0 != .demo }, id: \.self) { provider in
+                    ForEach(ProviderKind.allCases.filter { $0 != .demo && $0 != .local }, id: \.self) { provider in
                         Text(provider.displayName).tag(provider)
                     }
                 }
@@ -304,7 +304,7 @@ struct AccountEditorView: View {
     }
 
     private func applyPreset(for provider: ProviderKind) {
-        guard provider != .custom, provider != .demo,
+        guard provider != .custom, provider != .demo, provider != .local,
               let incoming = provider.incomingDefaults,
               let outgoing = provider.outgoingDefaults else {
             return

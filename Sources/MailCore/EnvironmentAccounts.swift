@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 // MARK: - Errors
@@ -506,29 +505,7 @@ public enum EnvironmentAccounts {
             return provider
         }
 
-        return inferredProvider(for: email)
-    }
-
-    private static func inferredProvider(for email: String) -> ProviderKind {
-        let domain = email
-            .split(separator: "@", omittingEmptySubsequences: true)
-            .last?
-            .lowercased() ?? ""
-
-        switch domain {
-        case "icloud.com", "me.com", "mac.com":
-            return .icloud
-        case "gmail.com", "googlemail.com":
-            return .gmail
-        case "yahoo.com", "ymail.com", "rocketmail.com":
-            return .yahoo
-        case "fastmail.com", "fastmail.fm":
-            return .fastmail
-        case "zoho.com":
-            return .zoho
-        default:
-            return .custom
-        }
+        return ProviderKind.inferred(forEmail: email)
     }
 
     private static func applyServer(
@@ -585,19 +562,6 @@ public enum EnvironmentAccounts {
     /// A deterministic UUID so re-reading the same `.env` file updates the
     /// same account instead of creating duplicates.
     private static func stableID(for email: String) -> UUID {
-        let digest = SHA256.hash(data: Data("mailr-account:\(email)".utf8))
-        var bytes = Array(digest.prefix(16))
-
-        // RFC 4122 version 4 / variant bits.
-        bytes[6] = (bytes[6] & 0x0F) | 0x40
-        bytes[8] = (bytes[8] & 0x3F) | 0x80
-
-        let uuid = uuid_t(
-            bytes[0], bytes[1], bytes[2], bytes[3],
-            bytes[4], bytes[5], bytes[6], bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11],
-            bytes[12], bytes[13], bytes[14], bytes[15]
-        )
-        return UUID(uuid: uuid)
+        StableAccountID.email(email)
     }
 }
