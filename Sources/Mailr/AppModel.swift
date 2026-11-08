@@ -64,6 +64,9 @@ final class AppModel {
     @ObservationIgnored private let hostConfiguration: HostMailConfiguration?
     @ObservationIgnored private let hostStore: (any HostMailStore)?
     @ObservationIgnored private var services: [UUID: any MailService] = [:]
+    @ObservationIgnored private var hostAccountIDs: Set<UUID> = []
+    @ObservationIgnored private static let hostAccountIDsKey = "MailrHostAccountIDs"
+    private(set) var isHostMode = false
     @ObservationIgnored private var loadToken = UUID()
     @ObservationIgnored private var bodyToken = UUID()
     @ObservationIgnored private var started = false
@@ -80,6 +83,11 @@ final class AppModel {
         let configuration = HostMailConfiguration.load()
         self.hostConfiguration = configuration
         self.hostStore = configuration.map { HTTPHostMailStore(configuration: $0) }
+
+        let storedHostIDs = UserDefaults.standard.stringArray(forKey: Self.hostAccountIDsKey) ?? []
+        hostAccountIDs = Set(storedHostIDs.compactMap { UUID(uuidString: $0) })
+        isHostMode = !hostAccountIDs.isEmpty
+
         loadAccounts()
     }
 
@@ -144,11 +152,78 @@ final class AppModel {
         isCheckingHostArchive = false
     }
 
+    func isHostAccount(_ accountID: UUID) -> Bool {
+        hostAccountIDs.contains(accountID)
+    }
+
+    /// The host server reads this Keychain item when it downloads mail. The
+    /// Mac app is allowed to write it because it runs in the same user session.
+    func setHostPassword(_ password: String, for accountID: UUID) throws {
+        try credentials.setPassword(password, for: accountID)
+    }
+
+    func refreshHostNow() async {
+        guard let hostStore else { return }
+        try? await hostStore.requestSync()
+        await refreshHostAccounts()
+        if let selection {
+            await loadMailboxes(for: selection.accountID)
+            await loadMessages(preserveSelection: true)
+        }
+    }
+
+    /// Replaces the locally configured accounts with the accounts owned by the
+    /// host server. The host is the authority when it exposes any accounts.
+    private func refreshHostAccounts() async {
+        guard let hostStore else { return }
+
+        var hostAccounts: [MailAccount] = []
+        for attempt in 0..<4 {
+            if let fetched = try? await hostStore.accounts(), !fetched.isEmpty {
+                hostAccounts = fetched
+                break
+            }
+            if attempt < 3 {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+        }
+        guard !hostAccounts.isEmpty else { return }
+
+        let existingMailboxes = Dictionary(
+            uniqueKeysWithValues: runtimes.map { ($0.id, $0.mailboxes) }
+        )
+        var accounts = hostAccounts
+        if let demo = runtimes.first(where: { $0.account.isDemo })?.account,
+           !accounts.contains(where: { $0.id == demo.id }) {
+            accounts.insert(demo, at: 0)
+        }
+
+        runtimes = accounts.map { account in
+            let boxes = existingMailboxes[account.id]
+                ?? ((try? database.loadMailboxes(accountID: account.id)) ?? [])
+            return AccountRuntime(account: account, mailboxes: boxes)
+        }
+
+        hostAccountIDs = Set(hostAccounts.map(\.id))
+        isHostMode = true
+        UserDefaults.standard.set(
+            hostAccountIDs.map(\.uuidString),
+            forKey: Self.hostAccountIDsKey
+        )
+        try? accountStore.save(accounts)
+
+        if let selection, !accounts.contains(where: { $0.id == selection.accountID }) {
+            self.selection = nil
+        }
+    }
+
     // MARK: - Startup
 
     func start() async {
         guard !started else { return }
         started = true
+
+        await refreshHostAccounts()
 
         let demoID = runtimes.first(where: { $0.account.isDemo })?.id
         if let demoID {
@@ -298,7 +373,7 @@ final class AppModel {
             let service = try service(for: accountID)
             let boxes = try await service.listMailboxes()
             try? database.saveMailboxes(boxes, accountID: accountID)
-            if let hostStore, account.provider != .local {
+            if let hostStore, account.provider != .local, !hostAccountIDs.contains(accountID) {
                 try? await hostStore.saveMailboxes(boxes, accountID: accountID)
             }
             guard let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
@@ -334,6 +409,11 @@ final class AppModel {
         guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
+
+        if let hostStore, isHostMode {
+            try? await hostStore.requestSync()
+            await refreshHostAccounts()
+        }
 
         for runtime in runtimes {
             await loadMailboxes(for: runtime.id)
@@ -424,9 +504,12 @@ final class AppModel {
             guard token == loadToken else { return }
 
             let isLocalAccount = runtimes.first(where: { $0.id == selection.accountID })?.account.provider == .local
+            let isHostAccount = hostAccountIDs.contains(selection.accountID)
             var visible = fetched
-            for index in visible.indices {
-                visible[index].isOnMailbox = !isLocalAccount
+            if !isLocalAccount && !isHostAccount {
+                for index in visible.indices {
+                    visible[index].isOnMailbox = true
+                }
             }
 
             // Ask the host archive for everything it holds in this mailbox,
@@ -436,7 +519,7 @@ final class AppModel {
             var merged = visible
             let visibleIDs = Set(visible.map(\.id))
             var hostOnly: [MessageSummary] = []
-            if let hostStore, !isLocalAccount {
+            if let hostStore, !isLocalAccount, !isHostAccount {
                 let snapshot = try? await hostStore.mailboxSnapshot(
                     accountID: selection.accountID,
                     mailbox: selection.mailboxPath,
@@ -532,6 +615,7 @@ final class AppModel {
         )
 
         let isLocalAccount = runtimes.first(where: { $0.id == selection.accountID })?.account.provider == .local
+        let isHostAccount = hostAccountIDs.contains(selection.accountID)
 
         do {
             let service = try service(for: selection.accountID)
@@ -539,14 +623,16 @@ final class AppModel {
             guard token == bodyToken, selectedMessageID == id else { return }
 
             var message = fetchedMessage
-            message.summary.isOnMailbox = !isLocalAccount
+            if !isLocalAccount && !isHostAccount {
+                message.summary.isOnMailbox = true
+            }
             try? database.saveMessage(message, accountID: selection.accountID)
-            updateSummary(id: id) { $0.isOnMailbox = !isLocalAccount }
+            updateSummary(id: id) { $0.isOnMailbox = message.summary.isOnMailbox }
 
             // Mirror the full message to the host archive. Failing to reach
             // the archive must never make the mailbox unreadable.
-            var onHost = false
-            if let hostStore, !isLocalAccount {
+            var onHost = isHostAccount
+            if let hostStore, !isLocalAccount, !isHostAccount {
                 do {
                     try await hostStore.storeMessage(message, accountID: selection.accountID)
                     onHost = true
@@ -558,7 +644,7 @@ final class AppModel {
             guard token == bodyToken, selectedMessageID == id else { return }
             currentMessage = message
             currentStorage = MessageStorageStatus(
-                onMailbox: !isLocalAccount,
+                onMailbox: isHostAccount ? message.summary.isOnMailbox : !isLocalAccount,
                 onHost: onHost,
                 onDevice: true
             )
@@ -577,7 +663,7 @@ final class AppModel {
             // Prefer the host archive, then the local cache.
             var onHost = false
             var loaded: MailMessage?
-            if let hostStore, !isLocalAccount,
+            if let hostStore, !isLocalAccount, !isHostAccount,
                let hostMessage = try? await hostStore.storedMessage(
                    accountID: selection.accountID,
                    mailbox: summary.mailbox,
@@ -674,7 +760,7 @@ final class AppModel {
                     flags: [.flagged],
                     enabled: next
                 )
-                if let hostStore {
+                if let hostStore, !hostAccountIDs.contains(accountID) {
                     try? await hostStore.updateFlags(
                         accountID: accountID,
                         mailbox: target.mailbox,
@@ -695,7 +781,7 @@ final class AppModel {
                     uid: target.uid,
                     isFlagged: !next
                 )
-                if let hostStore {
+                if let hostStore, !hostAccountIDs.contains(accountID) {
                     try? await hostStore.updateFlags(
                         accountID: accountID,
                         mailbox: target.mailbox,
@@ -756,7 +842,7 @@ final class AppModel {
                     flags: [.seen],
                     enabled: seen
                 )
-                if let hostStore {
+                if let hostStore, !hostAccountIDs.contains(resolvedAccount) {
                     try? await hostStore.updateFlags(
                         accountID: resolvedAccount,
                         mailbox: message.mailbox,
@@ -928,6 +1014,11 @@ final class AppModel {
     // MARK: - Account editing
 
     func saveAccount(_ account: MailAccount, password: String?) async throws {
+        if hostAccountIDs.contains(account.id) {
+            throw MailError.notConfigured(
+                "This account is managed by the host server. Change it in the host configuration."
+            )
+        }
         if let password, !password.isEmpty {
             try credentials.setPassword(password, for: account.id)
         }
@@ -963,6 +1054,10 @@ final class AppModel {
     }
 
     func deleteAccount(_ accountID: UUID) async {
+        if hostAccountIDs.contains(accountID) {
+            flash("This account is managed by the host server.")
+            return
+        }
         await services[accountID]?.close()
         services[accountID] = nil
         try? credentials.deletePassword(for: accountID)
@@ -987,6 +1082,10 @@ final class AppModel {
     func testAccount(_ account: MailAccount, password: String) async throws -> Int {
         if account.isDemo {
             let service = DemoMailService()
+            return try await service.listMailboxes().count
+        }
+        if hostAccountIDs.contains(account.id), let hostStore {
+            let service = HostMailService(store: hostStore, accountID: account.id)
             return try await service.listMailboxes().count
         }
         if account.provider == .local {
@@ -1020,6 +1119,8 @@ final class AppModel {
         let service: any MailService
         if account.isDemo {
             service = DemoMailService(database: database)
+        } else if hostAccountIDs.contains(accountID), let hostStore {
+            service = HostMailService(store: hostStore, accountID: accountID)
         } else if account.provider == .local {
             service = LocalMailService(database: database, accountID: accountID)
         } else {

@@ -34,7 +34,35 @@ struct MailrServerCommand {
         } ?? MailDatabase.hostURL
 
         let database = MailDatabase(fileURL: databaseURL)
-        let server = HostMailServer(port: port, host: host, database: database)
+
+        func positiveInt(_ key: String, default defaultValue: Int) -> Int {
+            guard let raw = environment[key], let value = Int(raw), value > 0 else {
+                return defaultValue
+            }
+            return value
+        }
+
+        func enabled(_ key: String) -> Bool {
+            guard let raw = environment[key]?.lowercased() else { return false }
+            return ["1", "true", "yes", "on"].contains(raw)
+        }
+
+        let syncConfiguration = HostMailSyncEngine.Configuration(
+            interval: TimeInterval(positiveInt("MAILR_HOST_SYNC_INTERVAL", default: 300)),
+            messageLimit: positiveInt("MAILR_HOST_SYNC_LIMIT", default: 100),
+            prefetchBodyLimit: positiveInt("MAILR_HOST_PREFETCH", default: 20),
+            syncAllMailboxes: enabled("MAILR_HOST_SYNC_ALL")
+        )
+        let syncEngine = HostMailSyncEngine(
+            database: database,
+            configuration: syncConfiguration
+        )
+        let server = HostMailServer(
+            port: port,
+            host: host,
+            database: database,
+            syncEngine: syncEngine
+        )
 
         do {
             try server.start()
@@ -44,8 +72,9 @@ struct MailrServerCommand {
         }
 
         let boundPort = server.boundPort ?? port
-        print("Mailr host archive listening on http://\(host):\(boundPort)")
+        print("Mailr host server listening on http://\(host):\(boundPort)")
         print("Database: \(databaseURL.path)")
+        print("IMAP sync: every \(Int(syncConfiguration.interval))s, newest \(syncConfiguration.messageLimit) messages per mailbox")
         print("Set MAILR_HOST_SERVER=http://\(host):\(boundPort) in .env if the client uses another address.")
         print("Press Control-C to stop.")
 

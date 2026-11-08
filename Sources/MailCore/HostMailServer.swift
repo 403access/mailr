@@ -159,15 +159,42 @@ enum HostHTTPParser {
     }
 }
 
+// MARK: - Async bridge
+
+private final class AsyncResultBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Result<T, HostActionError>?
+
+    func set(_ result: Result<T, HostActionError>) {
+        lock.lock()
+        value = result
+        lock.unlock()
+    }
+
+    func get() -> Result<T, HostActionError>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+}
+
+private struct HostActionError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
+}
+
 // MARK: - Router
 
-/// Maps host archive HTTP routes onto ``MailDatabase``. It is intentionally
-/// synchronous so it can be unit tested without opening a socket.
+/// Maps host archive HTTP routes onto ``MailDatabase``. Read routes are served
+/// from SQLite. When a sync engine is attached, routes that need fresh data or
+/// an origin-side action are bridged into async work.
 public struct HostMailRouter: Sendable {
     public let database: MailDatabase
+    public let actions: (any HostMailActions)?
 
-    public init(database: MailDatabase) {
+    public init(database: MailDatabase, actions: (any HostMailActions)? = nil) {
         self.database = database
+        self.actions = actions
     }
 
     public func handle(_ request: HostHTTPRequest) -> HostHTTPResponse {
@@ -179,6 +206,26 @@ public struct HostMailRouter: Sendable {
                     messageCount: (try? database.messageCount()) ?? 0,
                     databasePath: database.fileURL?.path ?? ":memory:"
                 ))
+
+            case ("GET", "/v1/accounts"):
+                let accounts = try database.loadAccounts().filter { !$0.isDemo }
+                return .json(accounts)
+
+            case ("POST", "/v1/sync"):
+                if let actions {
+                    try perform { await actions.syncNow() }
+                }
+                return .json(HostSyncResponse(stored: 0))
+
+            case ("POST", "/v1/send"):
+                guard let actions else {
+                    return .error("Sending is only available when the host sync engine is running.", status: 501)
+                }
+                let payload = try decode(HostSendRequest.self, request.body)
+                try perform {
+                    try await actions.send(payload.message, accountID: payload.accountID)
+                }
+                return .json(HostSyncResponse(stored: 1))
 
             case ("POST", "/v1/sync/mailbox"):
                 let payload = try decode(HostMailboxSyncRequest.self, request.body)
@@ -193,11 +240,20 @@ public struct HostMailRouter: Sendable {
             case ("GET", "/v1/messages/list"):
                 let accountID = try uuid(request.query["accountID"])
                 let mailbox = try text(request.query["mailbox"])
-                let limit = Int(request.query["limit"] ?? "200") ?? 200
+                let limit = min(max(Int(request.query["limit"] ?? "200") ?? 200, 1), 1_000)
+                if let actions {
+                    _ = try perform {
+                        try await actions.refreshMailbox(
+                            accountID: accountID,
+                            mailbox: mailbox,
+                            limit: limit
+                        )
+                    }
+                }
                 let messages = try database.loadMessages(
                     accountID: accountID,
                     mailbox: mailbox,
-                    limit: min(max(limit, 1), 1_000)
+                    limit: limit
                 )
                 return .json(messages)
 
@@ -210,6 +266,16 @@ public struct HostMailRouter: Sendable {
                 let accountID = try uuid(request.query["accountID"])
                 let mailbox = try text(request.query["mailbox"])
                 let uid = try uid(request.query["uid"])
+                if let actions {
+                    let message = try perform {
+                        try await actions.fetchMessage(
+                            accountID: accountID,
+                            mailbox: mailbox,
+                            uid: uid
+                        )
+                    }
+                    return .json(HostMessageResponse(message: message))
+                }
                 let message = try database.loadMessage(
                     accountID: accountID,
                     mailbox: mailbox,
@@ -221,11 +287,32 @@ public struct HostMailRouter: Sendable {
                 let accountID = try uuid(request.query["accountID"])
                 let mailbox = try text(request.query["mailbox"])
                 let uid = try uid(request.query["uid"])
+                if let actions,
+                   (try database.isOnMailbox(accountID: accountID, mailbox: mailbox, uid: uid)) == true {
+                    try perform {
+                        try await actions.delete(accountID: accountID, mailbox: mailbox, uid: uid)
+                    }
+                }
                 try database.deleteMessage(accountID: accountID, mailbox: mailbox, uid: uid)
                 return .json(HostDeleteResponse(deleted: true))
 
             case ("POST", "/v1/move"):
                 let payload = try decode(HostMoveRequest.self, request.body)
+                if let actions,
+                   (try database.isOnMailbox(
+                       accountID: payload.accountID,
+                       mailbox: payload.source,
+                       uid: payload.uid
+                   )) == true {
+                    try perform {
+                        try await actions.move(
+                            accountID: payload.accountID,
+                            from: payload.source,
+                            uid: payload.uid,
+                            to: payload.destination
+                        )
+                    }
+                }
                 let moved = try database.moveMessage(
                     accountID: payload.accountID,
                     from: payload.source,
@@ -236,6 +323,30 @@ public struct HostMailRouter: Sendable {
 
             case ("POST", "/v1/flags"):
                 let payload = try decode(HostFlagsRequest.self, request.body)
+                if let actions,
+                   (try database.isOnMailbox(
+                       accountID: payload.accountID,
+                       mailbox: payload.mailbox,
+                       uid: payload.uid
+                   )) == true {
+                    let changes: [(MessageFlag, Bool)] = [
+                        payload.isRead.map { (.seen, $0) },
+                        payload.isFlagged.map { (.flagged, $0) },
+                        payload.isAnswered.map { (.answered, $0) }
+                    ].compactMap { $0 }
+
+                    for (flag, enabled) in changes {
+                        try perform {
+                            try await actions.setFlags(
+                                accountID: payload.accountID,
+                                mailbox: payload.mailbox,
+                                uid: payload.uid,
+                                flags: [flag],
+                                enabled: enabled
+                            )
+                        }
+                    }
+                }
                 try database.updateFlags(
                     accountID: payload.accountID,
                     mailbox: payload.mailbox,
@@ -270,6 +381,12 @@ public struct HostMailRouter: Sendable {
 
             case ("GET", "/v1/mailboxes"):
                 let accountID = try uuid(request.query["accountID"])
+                if let actions {
+                    let mailboxes = try perform {
+                        try await actions.refreshMailboxes(accountID: accountID)
+                    }
+                    return .json(mailboxes)
+                }
                 return .json(try database.loadMailboxes(accountID: accountID))
 
             case ("POST", "/v1/mailboxes"):
@@ -289,6 +406,33 @@ public struct HostMailRouter: Sendable {
 
     private struct RouteError: Error {
         let message: String
+    }
+
+    private func perform<T: Sendable>(
+        _ operation: @escaping @Sendable () async throws -> T
+    ) throws -> T {
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = AsyncResultBox<T>()
+
+        Task {
+            do {
+                box.set(.success(try await operation()))
+            } catch {
+                box.set(.failure(HostActionError(message: error.localizedDescription)))
+            }
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        guard let result = box.get() else {
+            throw HostActionError(message: "The host action did not return a result.")
+        }
+        switch result {
+        case .success(let value):
+            return value
+        case .failure(let error):
+            throw error
+        }
     }
 
     private func decode<T: Decodable>(_ type: T.Type, _ data: Data) throws -> T {
@@ -333,6 +477,7 @@ public final class HostMailServer: @unchecked Sendable {
     public private(set) var boundPort: UInt16?
 
     private let router: HostMailRouter
+    private let syncEngine: HostMailSyncEngine?
     private let queue = DispatchQueue(label: "app.mailr.host-server", attributes: .concurrent)
     private let stateLock = NSLock()
     private var socketFD: Int32 = -1
@@ -341,12 +486,14 @@ public final class HostMailServer: @unchecked Sendable {
     public init(
         port: UInt16 = 8787,
         host: String = "127.0.0.1",
-        database: MailDatabase = MailDatabase(fileURL: MailDatabase.hostURL)
+        database: MailDatabase = MailDatabase(fileURL: MailDatabase.hostURL),
+        syncEngine: HostMailSyncEngine? = nil
     ) {
         self.port = port
         self.host = host
         self.database = database
-        self.router = HostMailRouter(database: database)
+        self.syncEngine = syncEngine
+        self.router = HostMailRouter(database: database, actions: syncEngine)
     }
 
     deinit {
@@ -427,6 +574,7 @@ public final class HostMailServer: @unchecked Sendable {
 
         socketFD = fd
         running = true
+        syncEngine?.start()
         queue.async { [weak self] in
             self?.acceptLoop(fd)
         }
@@ -439,6 +587,7 @@ public final class HostMailServer: @unchecked Sendable {
         running = false
         stateLock.unlock()
 
+        syncEngine?.stop()
         guard fd >= 0 else { return }
         shutdown(fd, SHUT_RDWR)
         close(fd)

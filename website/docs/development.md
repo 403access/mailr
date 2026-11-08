@@ -26,7 +26,7 @@ The suite covers:
 - Host archive database syncing, storage flags, request routing, and an HTTP round trip
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 90 tests pass on macOS. The iOS app itself is verified by building and
+All 94 tests pass on macOS. The iOS app itself is verified by building and
 launching in the simulator.
 
 The Thunderbird importer is a separate SwiftPM executable:
@@ -36,18 +36,19 @@ swift run mailr-import list
 swift run mailr-import import --dry-run
 ```
 
-## Host archive
+## Host server
 
 ```bash
-make server        # loopback on 127.0.0.1:8787
+make server        # foreground on 127.0.0.1:8787
+make host-install  # build, install, and start the LAN LoginAgent
 ```
 
-The server keeps its database in `Application Support/Mailr/host-mail.sqlite3`.
-The macOS app starts it automatically when the configured host is loopback; use
-`make server` for the iOS app/Simulator or to keep it independent. For a
-physical iPhone, start it with `swift run MailrServer --host 0.0.0.0` and set
-`MAILR_HOST_SERVER=http://<Mac-LAN-IP>:8787` in `.env`. Set
-`MAILR_HOST_SERVER=off` to disable host syncing.
+The server keeps its database in `Application Support/Mailr/host-mail.sqlite3`
+and owns the IMAP connections. `make host-install` builds and installs the
+release binary, copies `.env` to Application Support, and starts the
+`app.mailr.host-archive` LoginAgent on `0.0.0.0:8788`. Point clients at
+`MAILR_HOST_SERVER=http://<Mac-LAN-IP>:8788`. Set `MAILR_HOST_SERVER=off` to
+disable host mode.
 
 ## Local accounts from .env
 

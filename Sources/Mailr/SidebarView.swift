@@ -62,7 +62,10 @@ struct SidebarView: View {
                         .listRowBackground(Color.clear)
                     }
                 } header: {
-                    AccountHeader(runtime: runtime)
+                    AccountHeader(
+                        runtime: runtime,
+                        isHost: model.isHostAccount(runtime.id)
+                    )
                 }
             }
         }
@@ -204,8 +207,11 @@ struct MailboxDrawer: View {
 
                 ForEach(model.runtimes) { runtime in
                     VStack(alignment: .leading, spacing: 4) {
-                        AccountHeader(runtime: runtime)
-                            .padding(.horizontal, 8)
+                        AccountHeader(
+                            runtime: runtime,
+                            isHost: model.isHostAccount(runtime.id)
+                        )
+                        .padding(.horizontal, 8)
 
                         ForEach(runtime.mailboxes) { mailbox in
                             mailboxButton(runtime: runtime, mailbox: mailbox)
@@ -303,6 +309,7 @@ struct MailboxDrawer: View {
 
 struct AccountHeader: View {
     let runtime: AccountRuntime
+    var isHost: Bool = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -318,7 +325,12 @@ struct AccountHeader: View {
                     .tracking(1.5)
                     .foregroundStyle(MailrTheme.inkTertiary)
                     .lineLimit(1)
-                if runtime.account.isDemo {
+                if isHost {
+                    Text("HOST SERVER")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .tracking(1)
+                        .foregroundStyle(MailrTheme.accent.opacity(0.70))
+                } else if runtime.account.isDemo {
                     Text("OFFLINE DEMO")
                         .font(.system(size: 8, weight: .bold, design: .rounded))
                         .tracking(1)

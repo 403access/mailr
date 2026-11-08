@@ -724,6 +724,23 @@ public final class MailDatabase: @unchecked Sendable {
         }
     }
 
+    /// Whether a body row exists for this message. Headers and summaries can
+    /// be archived before the full message has been downloaded.
+    public func hasBody(accountID: UUID, mailbox: String, uid: UInt32) throws -> Bool {
+        try withDatabase { database in
+            let statement = try prepare(database, """
+            SELECT 1 FROM message_bodies
+            WHERE account_id = ? AND mailbox = ? AND uid = ?
+            LIMIT 1;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, mailbox)
+            sqlite3_bind_int64(statement, 3, Int64(uid))
+            return try step(statement)
+        }
+    }
+
     /// The stored mailbox-presence flag, or `nil` when the message is unknown.
     public func isOnMailbox(accountID: UUID, mailbox: String, uid: UInt32) throws -> Bool? {
         try withDatabase { database in

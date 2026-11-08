@@ -94,14 +94,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the client simply keeps using that server.
     private func startHostArchiveIfNeeded() {
         guard let configuration = HostMailConfiguration.load() else { return }
-        let host = configuration.baseURL.host?.lowercased() ?? ""
-        guard host == "127.0.0.1" || host == "localhost" || host == "::1" else {
-            return
+        let configuredHost = configuration.baseURL.host?.lowercased() ?? ""
+        let loopback = configuredHost == "127.0.0.1"
+            || configuredHost == "localhost"
+            || configuredHost == "::1"
+
+        let environmentBind = ProcessInfo.processInfo.environment["MAILR_HOST_BIND"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let bindHost: String
+        if let environmentBind, !environmentBind.isEmpty {
+            bindHost = environmentBind
+        } else {
+            bindHost = loopback ? "127.0.0.1" : "0.0.0.0"
         }
+
         let port = UInt16(configuration.baseURL.port ?? 8787)
+        let database = MailDatabase(fileURL: MailDatabase.hostURL)
+        let syncEngine = HostMailSyncEngine(database: database)
         let server = HostMailServer(
             port: port,
-            database: MailDatabase(fileURL: MailDatabase.hostURL)
+            host: bindHost,
+            database: database,
+            syncEngine: syncEngine
         )
         do {
             try server.start()

@@ -597,7 +597,7 @@ public struct MessageStorageStatus: Codable, Hashable, Sendable {
     public var symbolName: String { placement.symbolName }
 }
 
-public struct OutgoingAttachment: Sendable, Identifiable {
+public struct OutgoingAttachment: Sendable, Identifiable, Codable {
     public var id: UUID
     public var filename: String
     public var mimeType: String
@@ -611,7 +611,7 @@ public struct OutgoingAttachment: Sendable, Identifiable {
     }
 }
 
-public struct OutgoingMessage: Sendable {
+public struct OutgoingMessage: Sendable, Codable {
     public var from: EmailAddress
     public var to: [EmailAddress]
     public var cc: [EmailAddress]

@@ -22,5 +22,7 @@ description: Known gaps and possible next steps for Mailr.
   BODYSTRUCTURE-based lazy attachment fetching.
 - The demo mailbox is seeded once into SQLite and is not reset by deleting its
   mailboxes. Remove the app's data to get a fresh demo.
-- The host archive is optional, unauthenticated, and loopback-first. It is meant
-  for a trusted personal machine, not as a shared mail server.
+- The host server is unauthenticated plain HTTP on the local network. It is meant
+  for a trusted personal machine, not as a shared or internet-facing mail server.
+- Clients need the host server for new IMAP mail, actions, and sending. Cached
+  mail stays readable offline, but refreshing requires the host to be reachable.

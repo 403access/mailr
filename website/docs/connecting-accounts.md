@@ -22,6 +22,28 @@ description: Provider settings, app-specific passwords, and TLS behaviour.
 | Zoho | `imap.zoho.com:993` | `smtp.zoho.com:465` | App-specific password when 2FA is enabled |
 | Custom | Your server | Your server | Direct TLS on the chosen ports |
 
+## Host server mode
+
+When a host server is configured, the Mac owns the IMAP connections and the
+iPhone/iPad app syncs through it. Accounts come from the host instead of being
+added on each device.
+
+```bash
+make host-install    # build, install, and start the LoginAgent
+```
+
+Set `MAILR_HOST_SERVER=http://<mac-lan-address>:8788` in `.env` on the client.
+The host server needs each account's password in one of two places:
+
+1. `MAILR_ACCOUNT_<NAME>_PASSWORD` in the host `.env`, or
+2. the Mac Keychain, after using **Mailr → Settings → host account → Password**
+   on the Mac.
+
+The background sync downloads mail into the host database but never deletes or
+expunges messages on the origin server. The newest 100 messages per mailbox are
+kept current, and older bodies are fetched on demand. Host mode has no
+authentication and uses plain HTTP, so keep it on a trusted local network.
+
 ## TLS
 
 Mailr deliberately uses **implicit TLS** (IMAP 993 / SMTP 465). STARTTLS-only

@@ -26,10 +26,12 @@ Sources/
     ThunderbirdLocalStore.swift mbox and Maildir scanning and parsing
     ThunderbirdImporter.swift Account and local-mail import orchestration
     StableIdentifier.swift  Deterministic account UUIDs for imports
-    HostMailStore.swift     Host archive configuration, wire types, HTTP client
-    HostMailServer.swift    Loopback HTTP server and request router
+    HostMailStore.swift     Host server configuration, wire types, HTTP client
+    HostMailServer.swift    HTTP server, router, and async action bridge
+    HostMailSync.swift      Host-side IMAP downloader and origin proxy
+    HostMailService.swift   Client MailService backed by the host HTTP API
     DemoMailService.swift   Seeded offline mailbox
-  MailrServer/              Standalone host archive executable
+  MailrServer/              Standalone host server executable
   MailrImport/              mailr-import command-line tool
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
@@ -62,10 +64,16 @@ as an embedded framework; the macOS target consumes the same sources as the
 
 The app layer is a thin `MainActor` model over the service protocol. Views never
 talk to a socket directly: `AppModel` owns the current account, mailbox, message
-list, and selection, and calls into an `IMAPMailService` (or `DemoMailService`
-for the demo and `LocalMailService` for imported local mail). Reads and writes go
-through `MailDatabase`, a small synchronous SQLite store serialized with a
-recursive lock.
+list, and selection, and calls into an `IMAPMailService` when host mode is off,
+or `HostMailService` when the host server owns the accounts. The demo uses
+`DemoMailService`; imported local mail can use `LocalMailService`. Reads and
+writes go through `MailDatabase`, a small synchronous SQLite store serialized
+with a recursive lock.
+
+In host mode, `HostMailSyncEngine` opens the IMAP connections, downloads
+mail into `host-mail.sqlite3`, and proxies user actions back to the origin.
+Clients discover accounts from `GET /v1/accounts` and never open IMAP
+themselves.
 
 ## Connection flow
 
@@ -94,6 +102,9 @@ defence) and sent by `SMTPClient` using EHLO plus AUTH LOGIN or PLAIN.
 - Message lists show cached rows immediately, then refresh from the server. The
   cache keeps the newest 100 messages per mailbox.
 - The demo mailbox is seeded into the same database the first time it is opened.
-- The optional host archive runs as a separate loopback HTTP process and writes
-  to `Mailr/host-mail.sqlite3`. Messages carry an `on_mailbox` flag so the reader
-  can distinguish mailbox-only, host-only, and mirrored mail.
+- The optional host server runs as a separate HTTP process, writes to
+  `Mailr/host-mail.sqlite3`, and owns the IMAP connections. It downloads mail
+  without deleting it from the origin server. Messages carry an `on_mailbox`
+  flag so the reader can distinguish mailbox-only, host-only, and mirrored mail.
+- Clients in host mode keep an offline cache in their own `mailr.sqlite3` and
+  use the host for new mail, actions, and sending.

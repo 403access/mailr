@@ -188,7 +188,7 @@ public enum ThunderbirdLocalStore {
         var key = name.lowercased()
         // Thunderbird names shared local folders like
         // `Sent Items-user@example.com`. Match the folder part.
-        if let dash = key.lastIndex(of: "-"),
+        if let dash = key.firstIndex(of: "-"),
            key[key.index(after: dash)...].contains("@") {
             key = key[..<dash].trimmingCharacters(in: .whitespaces)
         }

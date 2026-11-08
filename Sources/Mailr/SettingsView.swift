@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var editingRequest: AccountEditorRequest?
     @State private var pendingDeletion: MailAccount?
     @State private var showSecurity = false
+    @State private var hostPasswordAccount: MailAccount?
 
     private struct AccountEditorRequest: Identifiable {
         let id = UUID()
@@ -81,6 +82,11 @@ struct SettingsView: View {
                 .environment(lock)
                 .mailrLargeDetent()
         }
+        .sheet(item: $hostPasswordAccount) { account in
+            HostPasswordView(account: account)
+                .environment(model)
+                .mailrLargeDetent()
+        }
         #if DEBUG
         .task {
             guard ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] == "account" else { return }
@@ -132,16 +138,22 @@ struct SettingsView: View {
 
             Spacer()
 
-            Button {
-                editingRequest = AccountEditorRequest(account: nil)
-            } label: {
-                #if os(iOS)
-                Label("Add", systemImage: "plus")
-                #else
-                Label("Add Account", systemImage: "plus")
-                #endif
+            if model.isHostMode {
+                Text("Managed by host server")
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
+            } else {
+                Button {
+                    editingRequest = AccountEditorRequest(account: nil)
+                } label: {
+                    #if os(iOS)
+                    Label("Add", systemImage: "plus")
+                    #else
+                    Label("Add Account", systemImage: "plus")
+                    #endif
+                }
+                .buttonStyle(.mailrPrimary)
             }
-            .buttonStyle(.mailrPrimary)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
@@ -225,7 +237,7 @@ struct SettingsView: View {
                 .frame(width: 32, height: 32)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Host archive")
+                    Text("Host server")
                         .font(.system(size: 13.5, weight: .semibold, design: .rounded))
                         .foregroundStyle(MailrTheme.ink)
 
@@ -272,19 +284,19 @@ struct SettingsView: View {
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
         } header: {
-            MailrSectionLabel(text: "Storage")
+            MailrSectionLabel(text: "Host server")
                 .padding(.leading, 4)
         }
     }
 
     private var hostArchiveDetail: String {
         if model.isCheckingHostArchive {
-            return "Checking the host archive…"
+            return "Checking the host server…"
         }
         if let health = model.hostArchiveHealth {
-            return "\(health.messageCount) messages stored on the host"
+            return "\(health.messageCount) messages cached on the host"
         }
-        return "Not reachable — start it with make server"
+        return "Not reachable — check the host server"
     }
 
     private var securitySubtitle: String {
@@ -298,7 +310,9 @@ struct SettingsView: View {
     }
 
     private func accountRow(_ runtime: AccountRuntime) -> some View {
-        HStack(spacing: 12) {
+        let isHostAccount = model.isHostAccount(runtime.id)
+
+        return HStack(spacing: 12) {
             AvatarView(
                 name: runtime.account.displayName,
                 address: runtime.account.emailAddress,
@@ -323,7 +337,12 @@ struct SettingsView: View {
                 Text(runtime.account.emailAddress)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(MailrTheme.inkTertiary)
-                if runtime.account.isDemo {
+                if isHostAccount {
+                    Text("Host server · \(runtime.mailboxes.count) mailbox\(runtime.mailboxes.count == 1 ? "" : "es")")
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
+                        .lineLimit(1)
+                } else if runtime.account.isDemo {
                     Text("Offline demo account")
                         .font(.system(size: 10, weight: .medium, design: .rounded))
                         .foregroundStyle(MailrTheme.inkTertiary)
@@ -342,7 +361,16 @@ struct SettingsView: View {
 
             Spacer()
 
-            if runtime.account.isDemo == false {
+            if isHostAccount {
+                #if os(macOS)
+                Button("Password") {
+                    hostPasswordAccount = runtime.account
+                }
+                .controlSize(.small)
+                #endif
+            }
+
+            if runtime.account.isDemo == false && !isHostAccount {
                 if runtime.account.provider != .local {
                     Button("Edit") {
                         editingRequest = AccountEditorRequest(account: runtime.account)

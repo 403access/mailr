@@ -208,6 +208,16 @@ public struct HostFlagsRequest: Codable, Sendable {
     }
 }
 
+public struct HostSendRequest: Codable, Sendable {
+    public var accountID: UUID
+    public var message: OutgoingMessage
+
+    public init(accountID: UUID, message: OutgoingMessage) {
+        self.accountID = accountID
+        self.message = message
+    }
+}
+
 public struct HostMailboxListRequest: Codable, Sendable {
     public var accountID: UUID
     public var mailboxes: [Mailbox]
@@ -252,6 +262,10 @@ public struct HostErrorResponse: Codable, Sendable {
 
 public protocol HostMailStore: Sendable {
     func health() async throws -> HostMailHealth
+    func accounts() async throws -> [MailAccount]
+    func requestSync() async throws
+    func send(_ message: OutgoingMessage, accountID: UUID) async throws
+    func mailboxes(accountID: UUID) async throws -> [Mailbox]
     func syncMailbox(
         accountID: UUID,
         mailbox: String,
@@ -288,7 +302,32 @@ public struct HTTPHostMailStore: HostMailStore {
     }
 
     public func health() async throws -> HostMailHealth {
-        try await get("health")
+        try await get("health", timeout: 4)
+    }
+
+    public func accounts() async throws -> [MailAccount] {
+        try await get("v1/accounts")
+    }
+
+    public func requestSync() async throws {
+        _ = try await send("POST", path: "v1/sync", timeout: 120)
+    }
+
+    public func send(_ message: OutgoingMessage, accountID: UUID) async throws {
+        let request = HostSendRequest(accountID: accountID, message: message)
+        _ = try await send(
+            "POST",
+            path: "v1/send",
+            body: try encode(request),
+            timeout: 120
+        )
+    }
+
+    public func mailboxes(accountID: UUID) async throws -> [Mailbox] {
+        try await get(
+            "v1/mailboxes",
+            query: [URLQueryItem(name: "accountID", value: accountID.uuidString)]
+        )
     }
 
     public func syncMailbox(
@@ -396,9 +435,10 @@ public struct HTTPHostMailStore: HostMailStore {
 
     private func get<T: Decodable>(
         _ path: String,
-        query: [URLQueryItem] = []
+        query: [URLQueryItem] = [],
+        timeout: TimeInterval = 30
     ) async throws -> T {
-        let data = try await send("GET", path: path, query: query)
+        let data = try await send("GET", path: path, query: query, timeout: timeout)
         return try decode(data)
     }
 
@@ -418,7 +458,8 @@ public struct HTTPHostMailStore: HostMailStore {
         _ method: String,
         path: String,
         query: [URLQueryItem] = [],
-        body: Data? = nil
+        body: Data? = nil,
+        timeout: TimeInterval = 30
     ) async throws -> Data {
         guard var components = URLComponents(
             url: configuration.baseURL,
@@ -441,7 +482,7 @@ public struct HTTPHostMailStore: HostMailStore {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 4
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = body
