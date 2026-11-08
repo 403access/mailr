@@ -19,6 +19,18 @@ description: How Mailr protects credentials, message rendering, and your data.
 - Credentials are only sent after the TLS connection is established, unless the
   user explicitly selects the insecure plaintext option.
 
+## App Lock
+
+- App Lock is **off by default** and is enabled from Settings → Privacy →
+  App Lock.
+- Once enabled, Mailr asks for Face ID, Touch ID, or the device passcode when
+  it launches and whenever it returns from the background.
+- Authentication is handled by **LocalAuthentication**. Mailr only receives a
+  success or failure result; biometric data never leaves the device.
+- App Lock is a UI gate over locally cached mail. It is not an additional
+  encryption layer; the SQLite cache remains protected by the app sandbox and
+  device encryption.
+
 ## Transport
 
 - TLS is handled by **Network.framework** with the system trust store and a

@@ -63,6 +63,13 @@ final class AppModel {
     @ObservationIgnored private var bodyToken = UUID()
     @ObservationIgnored private var started = false
     @ObservationIgnored private var clearStatusTask: Task<Void, Never>?
+    @ObservationIgnored private var composeSuspendedForLock: ComposeDraft?
+    @ObservationIgnored private var captureComposeOnDisappear = false
+    @ObservationIgnored private var settingsSuspendedForLock = false
+
+    /// Whether the first mailbox/message load has finished. Used to avoid
+    /// duplicating startup work when the app is unlocked.
+    private(set) var hasLoadedInitialMail = false
 
     init() {
         loadAccounts()
@@ -134,6 +141,8 @@ final class AppModel {
             await applyPreviewMode(preview)
         }
         #endif
+
+        hasLoadedInitialMail = true
     }
 
     #if DEBUG
@@ -167,7 +176,7 @@ final class AppModel {
             }
         case "compose":
             newCompose()
-        case "settings":
+        case "settings", "security":
             showSettings = true
         case "account":
             showSettings = true
@@ -259,6 +268,45 @@ final class AppModel {
         }
         if selection != nil {
             await loadMessages(preserveSelection: true)
+        }
+    }
+
+    // MARK: - App Lock
+
+    /// Closes transient sheets so the lock screen cannot be covered by them,
+    /// remembering what was open so it can be restored after unlocking.
+    func suspendForLock() {
+        if showSettings {
+            settingsSuspendedForLock = true
+            showSettings = false
+        }
+        if let compose {
+            // `ComposeView` keeps edits in local state, so remember the draft
+            // it hands back when the sheet finishes dismissing.
+            composeSuspendedForLock = compose
+            captureComposeOnDisappear = true
+            self.compose = nil
+        }
+    }
+
+    /// Called by `ComposeView` when its sheet goes away. Only captures the
+    /// draft when the dismissal came from App Lock, so a normal cancel still
+    /// discards the message.
+    func composeViewDidDisappear(_ draft: ComposeDraft) {
+        guard captureComposeOnDisappear else { return }
+        captureComposeOnDisappear = false
+        composeSuspendedForLock = draft
+    }
+
+    func restoreAfterUnlock() {
+        if settingsSuspendedForLock {
+            settingsSuspendedForLock = false
+            showSettings = true
+        }
+        captureComposeOnDisappear = false
+        if let draft = composeSuspendedForLock {
+            composeSuspendedForLock = nil
+            compose = draft
         }
     }
 

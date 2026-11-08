@@ -10,12 +10,14 @@ struct MailrApp: App {
     #endif
 
     @State private var model = AppModel()
+    @State private var lock = AppLock()
 
     var body: some Scene {
         #if os(macOS)
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(lock)
         }
         .defaultSize(width: 1280, height: 800)
         .windowToolbarStyle(.unifiedCompact)
@@ -66,6 +68,7 @@ struct MailrApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .environment(lock)
         }
         #endif
     }

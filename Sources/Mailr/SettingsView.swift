@@ -3,10 +3,12 @@ import MailCore
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var lock
     @Environment(\.dismiss) private var dismiss
 
     @State private var editingRequest: AccountEditorRequest?
     @State private var pendingDeletion: MailAccount?
+    @State private var showSecurity = false
 
     private struct AccountEditorRequest: Identifiable {
         let id = UUID()
@@ -19,17 +21,31 @@ struct SettingsView: View {
             Divider()
 
             if model.runtimes.isEmpty {
-                EmptyStateView(
-                    icon: "person.crop.circle.badge.plus",
-                    title: "No Accounts",
-                    message: "Add an account to start sending and receiving mail."
-                )
+                List {
+                    EmptyStateView(
+                        icon: "person.crop.circle.badge.plus",
+                        title: "No Accounts",
+                        message: "Add an account to start sending and receiving mail."
+                    )
+                    .frame(height: 240)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+
+                    privacySection
+                }
+                .listStyle(.inset)
+                .scrollContentBackground(.hidden)
             } else {
                 List {
-                    ForEach(model.runtimes) { runtime in
-                        accountRow(runtime)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
+                    Section("Accounts") {
+                        ForEach(model.runtimes) { runtime in
+                            accountRow(runtime)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
+                        }
                     }
+
+                    privacySection
                 }
                 .listStyle(.inset)
                 .scrollContentBackground(.hidden)
@@ -40,9 +56,15 @@ struct SettingsView: View {
         }
         .modifier(SettingsSizing())
         .background(.background)
+        .onAppear { lock.refreshBiometry() }
         .sheet(item: $editingRequest) { request in
             AccountEditorView(account: request.account)
                 .environment(model)
+                .mailrLargeDetent()
+        }
+        .sheet(isPresented: $showSecurity) {
+            SecuritySettingsView()
+                .environment(lock)
                 .mailrLargeDetent()
         }
         #if DEBUG
@@ -50,6 +72,11 @@ struct SettingsView: View {
             guard ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] == "account" else { return }
             try? await Task.sleep(nanoseconds: 700_000_000)
             editingRequest = AccountEditorRequest(account: nil)
+        }
+        .task {
+            guard ProcessInfo.processInfo.environment["MAILR_UI_PREVIEW"] == "security" else { return }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            showSecurity = true
         }
         #endif
         .confirmationDialog(
@@ -97,6 +124,53 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
+    }
+
+    private var privacySection: some View {
+        Section("Privacy") {
+            Button {
+                showSecurity = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: lock.isEnabled ? "lock.shield.fill" : "lock.shield")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(lock.isEnabled ? Color.accentColor : Color.secondary)
+                        .frame(width: 26)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("App Lock")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text(securitySubtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Text(lock.isEnabled ? "On" : "Off")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
+        }
+    }
+
+    private var securitySubtitle: String {
+        if lock.isEnabled {
+            return "Unlocks with \(lock.biometryName)"
+        }
+        if lock.canUseBiometrics {
+            return "Require \(lock.biometryName) when Mailr opens"
+        }
+        return "Biometrics aren’t available on this device"
     }
 
     private func accountRow(_ runtime: AccountRuntime) -> some View {

@@ -3,20 +3,33 @@ import MailCore
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppLock.self) private var lock
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         @Bindable var model = model
 
-        Group {
-            if horizontalSizeClass == .compact {
-                CompactRootView()
-            } else {
-                RegularRootView()
+        ZStack {
+            Group {
+                if horizontalSizeClass == .compact {
+                    CompactRootView()
+                } else {
+                    RegularRootView()
+                }
+            }
+            .allowsHitTesting(!lock.isLocked)
+            .accessibilityHidden(lock.isLocked)
+
+            if lock.isLocked {
+                LockScreenView()
+                    .environment(lock)
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
         .modifier(MailrWindowSizing())
+        .animation(.easeInOut(duration: 0.18), value: lock.isLocked)
         .sheet(item: $model.compose) { draft in
             ComposeView(draft: draft)
                 .environment(model)
@@ -25,12 +38,13 @@ struct RootView: View {
         .sheet(isPresented: $model.showSettings) {
             SettingsView()
                 .environment(model)
+                .environment(lock)
                 .mailrLargeDetent()
         }
         .alert(
             "Mailr",
             isPresented: Binding(
-                get: { model.errorMessage != nil },
+                get: { model.errorMessage != nil && !lock.isLocked },
                 set: { newValue in if !newValue { model.errorMessage = nil } }
             )
         ) {
@@ -39,7 +53,7 @@ struct RootView: View {
             Text(model.errorMessage ?? "")
         }
         .overlay(alignment: .bottom) {
-            if let status = model.statusText {
+            if let status = model.statusText, !lock.isLocked {
                 Text(status)
                     .font(.callout.weight(.medium))
                     .padding(.horizontal, 16)
@@ -54,8 +68,21 @@ struct RootView: View {
         .animation(.snappy(duration: 0.2), value: model.statusText)
         .task { await model.start() }
         .onChange(of: scenePhase) { oldPhase, newPhase in
-            guard oldPhase == .background, newPhase == .active else { return }
-            Task { await model.refreshAll() }
+            if newPhase == .background {
+                lock.lock()
+            } else if oldPhase == .background, newPhase == .active, !lock.isLocked {
+                Task { await model.refreshAll() }
+            }
+        }
+        .onChange(of: lock.isLocked) { wasLocked, isLocked in
+            if isLocked {
+                model.suspendForLock()
+            } else if wasLocked {
+                model.restoreAfterUnlock()
+                if model.hasLoadedInitialMail {
+                    Task { await model.refreshAll() }
+                }
+            }
         }
     }
 }

@@ -36,7 +36,8 @@ make docs-build  # production build
 - **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
 - **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
 - **Platform integration.** Keychain password storage, dark mode, search, pull-to-refresh, and adaptive sheets.
-- **No third-party dependencies.** Only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, Foundation, and SQLite3.
+- **App Lock.** Optional Face ID or Touch ID (with device passcode fallback) when Mailr launches or returns to the foreground. Manage it under Settings → Privacy → App Lock.
+- **No third-party dependencies.** Only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, LocalAuthentication, Foundation, and SQLite3.
 
 ## Quick start
 
@@ -113,8 +114,11 @@ Sources/
     MessageDetailView.swift Reader, actions, attachment export
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)
     ComposeView.swift       Compose sheet and file importer
-    SettingsView.swift      Account management
+    SettingsView.swift      Account management and Privacy entry
     AccountEditorView.swift Provider presets, IMAP/SMTP settings, test
+    AppLock.swift           Face ID / Touch ID lock state via LocalAuthentication
+    LockScreenView.swift    Opaque unlock cover
+    SecuritySettingsView.swift App Lock setup page
     Platform.swift          iOS/macOS conditional helpers
 Tests/MailCoreTests/        Parser, builder, IMAP, and demo-service tests
 project.yml                 XcodeGen definition for the iOS app
@@ -157,13 +161,14 @@ SIMCTL_CHILD_MAILR_UI_PREVIEW=message \
   xcrun simctl launch --terminate-running-process booted app.mailr.Mailr
 ```
 
-Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `account`. The hook is compiled out of release builds.
+Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `security`, `account`. The hook is compiled out of release builds.
 
 ## Security and privacy
 
 - Passwords live in the **macOS/iOS Keychain**, keyed by account UUID. Account metadata, cached mailboxes, message summaries, bodies, and attachments are stored in a **SQLite database** in Application Support (`Mailr/mailr.sqlite3`). Existing `accounts.json` files are imported once and renamed.
 - TLS is handled by **Network.framework** with the system trust store and a 30-second connect timeout. Credentials are only sent after the TLS connection is established, unless the user explicitly selects the insecure plaintext option.
 - The HTML reader disables JavaScript, uses a non-persistent web data store, injects a restrictive CSP, and blocks remote images by default to prevent tracking pixels.
+- **App Lock** is optional and off by default. Once enabled, authentication runs through **LocalAuthentication** (Face ID, Touch ID, or the device passcode). Mailr only receives success or failure; biometric data never leaves the device. With App Lock enabled, Mailr locks at launch and whenever it returns from the background; the preference is stored in `UserDefaults`.
 - There is no analytics, crash reporting, or remote logging.
 
 ## Limitations / possible next steps

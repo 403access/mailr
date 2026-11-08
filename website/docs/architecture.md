@@ -29,8 +29,11 @@ Sources/
     MessageDetailView.swift Reader, actions, attachment export
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)
     ComposeView.swift       Compose sheet and file importer
-    SettingsView.swift      Account management
+    SettingsView.swift      Account management and Privacy entry
     AccountEditorView.swift Provider presets, IMAP/SMTP settings, test
+    AppLock.swift           Face ID / Touch ID lock state via LocalAuthentication
+    LockScreenView.swift    Opaque unlock cover
+    SecuritySettingsView.swift App Lock setup page
     Platform.swift          iOS/macOS conditional helpers
 Tests/MailCoreTests/        Parser, builder, IMAP, and demo-service tests
 project.yml                 XcodeGen definition for the iOS app

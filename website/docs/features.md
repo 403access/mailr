@@ -42,6 +42,7 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
 ## Platform integration
 
 - Keychain password storage
+- Optional App Lock with Face ID / Touch ID and device passcode fallback
 - Dark mode
 - Adaptive sheets
 - Native share and file export

@@ -65,6 +65,9 @@ struct ComposeView: View {
             }
             #endif
         }
+        .onDisappear {
+            model.composeViewDidDisappear(draft)
+        }
     }
 
     private var titleBar: some View {
