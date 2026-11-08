@@ -43,7 +43,7 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
 
 - Keychain password storage
 - Optional App Lock with Face ID / Touch ID and device passcode fallback
-- Dark mode
+- Aurora light theme (dark mode planned)
 - Adaptive sheets
 - Native share and file export
 

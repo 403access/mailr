@@ -15,12 +15,14 @@ struct MessageListView: View {
 
         VStack(spacing: 0) {
             header
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
 
             content
         }
-        .background(.background)
-        .navigationTitle(compact ? (model.activeMailbox?.name ?? "Mail") : "")
+        .background { MailrBackground() }
+        .navigationTitle("")
         .mailrInlineNavigationTitle()
         .toolbar {
             #if os(iOS)
@@ -64,16 +66,46 @@ struct MessageListView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                if !compact {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                MailrSectionLabel(text: "Mailbox")
+
+                HStack(spacing: 10) {
+                    if let mailbox = model.activeMailbox {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(MailrTheme.accentGradient)
+                                .shadow(color: MailrTheme.accent.opacity(0.25), radius: 8, y: 3)
+                            Image(systemName: mailbox.role.symbolName)
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        .frame(width: 34, height: 34)
+                    }
+
                     Text(model.activeMailbox?.name ?? "Mail")
-                        .font(.title3.weight(.semibold))
+                        .font(.system(size: compact ? 29 : 25, weight: .bold, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkGradient)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                 }
-                if let mailbox = model.activeMailbox {
-                    Text(subtitle(for: mailbox))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+
+                if model.activeMailbox != nil, !model.messages.isEmpty {
+                    HStack(spacing: 6) {
+                        MailrStatChip(
+                            systemImage: "envelope",
+                            text: messageCountText
+                        )
+
+                        let unread = model.messages.filter(\.isUnread).count
+                        if unread > 0 {
+                            MailrStatChip(
+                                systemImage: "circle.fill",
+                                text: "\(unread) unread",
+                                highlighted: true
+                            )
+                        }
+                    }
                 }
             }
 
@@ -82,19 +114,17 @@ struct MessageListView: View {
             if model.isLoadingMessages {
                 ProgressView()
                     .controlSize(.small)
+                    .tint(MailrTheme.accent)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, compact ? 6 : 12)
-        .padding(.bottom, compact ? 8 : 10)
+        .padding(.horizontal, 18)
+        .padding(.top, compact ? 10 : 18)
+        .padding(.bottom, compact ? 12 : 16)
     }
 
-    private func subtitle(for mailbox: Mailbox) -> String {
+    private var messageCountText: String {
         let count = model.messages.count
-        let unread = model.messages.filter(\.isUnread).count
-        if count == 0 { return "Empty" }
-        if unread == 0 { return "\(count) message\(count == 1 ? "" : "s")" }
-        return "\(count) message\(count == 1 ? "" : "s") · \(unread) unread"
+        return "\(count) message\(count == 1 ? "" : "s")"
     }
 
     @ViewBuilder
@@ -109,7 +139,7 @@ struct MessageListView: View {
 
                 if let onOpenDrawer {
                     Button("Choose Mailbox", action: onOpenDrawer)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.mailrPrimary)
                         .padding(.bottom, 40)
                 }
             }
@@ -123,12 +153,14 @@ struct MessageListView: View {
                 Button("Try Again") {
                     Task { await model.loadMessages(preserveSelection: true) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.mailrPrimary)
                 .padding(.bottom, 40)
             }
         } else if model.messages.isEmpty {
             if model.isLoadingMessages {
                 ProgressView("Loading mail…")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .tint(MailrTheme.accent)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 EmptyStateView(
@@ -160,32 +192,37 @@ struct MessageListView: View {
             ForEach(model.filteredMessages) { message in
                 MessageRow(
                     message: message,
-                    showsRecipient: showsRecipient
+                    showsRecipient: showsRecipient,
+                    isSelected: model.selectedMessageID == message.id
                 )
                 .tag(message.id)
-                .listRowInsets(EdgeInsets(top: 7, leading: 12, bottom: 7, trailing: 12))
+                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.inset)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
     }
 
     private var compactList: some View {
-        List {
-            ForEach(model.filteredMessages) { message in
-                NavigationLink(value: MessageRoute(messageID: message.id)) {
-                    MessageRow(
-                        message: message,
-                        showsRecipient: showsRecipient
-                    )
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(model.filteredMessages) { message in
+                    NavigationLink(value: MessageRoute(messageID: message.id)) {
+                        MessageRow(
+                            message: message,
+                            showsRecipient: showsRecipient
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
-        .listStyle(.plain)
-        .navigationDestination(for: MessageRoute.self) { route in
-            MessageDetailScreen(messageID: route.messageID)
-        }
+        .scrollIndicators(.hidden)
+        .contentMargins(.bottom, 78, for: .scrollContent)
         .refreshable {
             await model.loadMessages(preserveSelection: true)
         }
@@ -199,65 +236,100 @@ struct MessageListView: View {
 struct MessageRow: View {
     let message: MessageSummary
     var showsRecipient: Bool = false
+    var isSelected: Bool = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 11) {
             ZStack(alignment: .bottomTrailing) {
                 AvatarView(
                     name: message.from.first?.name ?? "",
                     address: message.senderAddress,
-                    size: 30
+                    size: 36
                 )
                 if message.isUnread {
                     Circle()
-                        .fill(Color.accentColor)
-                        .frame(width: 8, height: 8)
-                        .overlay(Circle().strokeBorder(Color.mailrWindowBackground, lineWidth: 1.5))
+                        .fill(MailrTheme.accentGradient)
+                        .frame(width: 9, height: 9)
+                        .overlay(Circle().strokeBorder(MailrTheme.baseTop, lineWidth: 2))
                         .offset(x: 1, y: 1)
                 }
             }
             .padding(.top, 1)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(senderLine)
-                        .font(.system(size: 13, weight: message.isUnread ? .semibold : .regular))
+                        .font(.system(
+                            size: 13.5,
+                            weight: message.isUnread ? .semibold : .medium,
+                            design: .rounded
+                        ))
+                        .foregroundStyle(MailrTheme.ink)
                         .lineLimit(1)
 
                     if message.isFlagged {
                         Image(systemName: "star.fill")
                             .font(.system(size: 9))
-                            .foregroundStyle(.yellow)
+                            .foregroundStyle(MailrTheme.amber)
                     }
                     if message.hasAttachments {
                         Image(systemName: "paperclip")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(MailrTheme.inkTertiary)
                     }
 
                     Spacer(minLength: 4)
 
                     Text(MailDateFormat.listDate(message.date))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
                         .monospacedDigit()
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(MailrTheme.surfaceSoft, in: Capsule())
                 }
 
                 Text(message.subject)
-                    .font(.system(size: 13, weight: message.isUnread ? .medium : .regular))
-                    .foregroundStyle(message.isUnread ? .primary : .secondary)
+                    .font(.system(
+                        size: 13.5,
+                        weight: message.isUnread ? .semibold : .medium,
+                        design: .rounded
+                    ))
+                    .foregroundStyle(message.isUnread ? MailrTheme.ink : MailrTheme.inkSecondary)
                     .lineLimit(1)
 
                 if !message.snippet.isEmpty {
                     Text(message.snippet)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
                         .lineLimit(2)
+                        .lineSpacing(1)
                 }
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(message.isUnread ? MailrTheme.unreadGradient : MailrTheme.cardGradient)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(
+                    isSelected ? MailrTheme.accent.opacity(0.45) : MailrTheme.border,
+                    lineWidth: isSelected ? 1.5 : 1
+                )
+        }
+        .overlay(alignment: .leading) {
+            if message.isUnread {
+                Capsule()
+                    .fill(MailrTheme.accentGradient)
+                    .frame(width: 3, height: 34)
+                    .padding(.leading, 1)
+            }
+        }
+        .shadow(color: MailrTheme.shadow, radius: 9, x: 0, y: 4)
         .contentShape(Rectangle())
-        .opacity(message.isUnread ? 1 : 0.88)
     }
 
     private var senderLine: String {

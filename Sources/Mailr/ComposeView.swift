@@ -25,32 +25,44 @@ struct ComposeView: View {
     var body: some View {
         VStack(spacing: 0) {
             titleBar
-            Divider()
-            fields
-            Divider()
-            editor
-            if !draft.attachments.isEmpty {
-                Divider()
-                attachmentStrip
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
+
+            VStack(spacing: 10) {
+                fields
+                    .mailrCard(radius: 18, shadowRadius: 10)
+
+                editor
+                    .mailrCard(radius: 18, shadowRadius: 10)
+
+                if !draft.attachments.isEmpty {
+                    attachmentStrip
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            .frame(maxHeight: .infinity)
+
             if let errorText {
-                Divider()
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundStyle(.red)
                     Text(errorText)
-                        .font(.caption)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.red)
                     Spacer()
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 7)
             }
-            Divider()
+
             footer
         }
         .modifier(ComposeSizing())
-        .background(.background)
+        .background { MailrBackground() }
+        .tint(MailrTheme.accent)
         .fileImporter(
             isPresented: $isImporting,
             allowedContentTypes: [.item],
@@ -71,23 +83,29 @@ struct ComposeView: View {
     }
 
     private var titleBar: some View {
-        HStack {
-            Text("New Message")
-                .font(.headline)
+        HStack(spacing: 11) {
+            MailrLogoMark(size: 34)
+
+            VStack(alignment: .leading, spacing: 1) {
+                MailrSectionLabel(text: "Compose")
+                Text("New Message")
+                    .font(.system(size: 19, weight: .bold, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkGradient)
+            }
+
             Spacer()
+
             Button {
                 dismiss()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 16))
+                Image(systemName: "xmark")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MailrIconButtonStyle(size: 32))
             .keyboardShortcut(.cancelAction)
             .mailrHelp("Close")
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var fields: some View {
@@ -104,13 +122,23 @@ struct ComposeView: View {
                 .controlSize(.regular)
             }
 
-            Divider().padding(.leading, 70)
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
+                .padding(.leading, 70)
 
             composeRow(label: "To") {
-                TextField("name@example.com", text: $draft.to)
+                TextField("", text: $draft.to)
                     .textFieldStyle(.plain)
-                    .textContentType(.emailAddress)
+                    .mailrEmailKeyboard()
                     .focused($focusedField, equals: .to)
+                    .overlay(alignment: .leading) {
+                        if draft.to.isEmpty {
+                            Text("Email address")
+                                .foregroundColor(MailrTheme.inkTertiary)
+                                .allowsHitTesting(false)
+                        }
+                    }
 
                 Button(showCcBcc ? "Hide Cc/Bcc" : "Cc/Bcc") {
                     withAnimation(.snappy(duration: 0.16)) {
@@ -118,24 +146,47 @@ struct ComposeView: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(MailrTheme.accent)
             }
 
             if showCcBcc {
-                Divider().padding(.leading, 70)
+                Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
+                .padding(.leading, 70)
                 composeRow(label: "Cc") {
-                    TextField("name@example.com", text: $draft.cc)
+                    TextField("", text: $draft.cc)
                         .textFieldStyle(.plain)
+                        .overlay(alignment: .leading) {
+                            if draft.cc.isEmpty {
+                                Text("Email address")
+                                    .foregroundColor(MailrTheme.inkTertiary)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                 }
-                Divider().padding(.leading, 70)
+                Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
+                .padding(.leading, 70)
                 composeRow(label: "Bcc") {
-                    TextField("name@example.com", text: $draft.bcc)
+                    TextField("", text: $draft.bcc)
                         .textFieldStyle(.plain)
+                        .overlay(alignment: .leading) {
+                            if draft.bcc.isEmpty {
+                                Text("Email address")
+                                    .foregroundColor(MailrTheme.inkTertiary)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                 }
             }
 
-            Divider().padding(.leading, 70)
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
+                .padding(.leading, 70)
 
             composeRow(label: "Subject") {
                 TextField("Subject", text: $draft.subject)
@@ -151,31 +202,34 @@ struct ComposeView: View {
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(MailrTheme.inkSecondary)
                 .frame(width: 58, alignment: .leading)
             content()
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 7)
+        .font(.system(size: 13.5, weight: .regular, design: .rounded))
+        .foregroundStyle(MailrTheme.ink)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 
     private var editor: some View {
         ZStack(alignment: .topLeading) {
             TextEditor(text: $draft.body)
-                .font(.system(size: 14))
-                .lineSpacing(3)
+                .font(.system(size: 14.5, weight: .regular, design: .rounded))
+                .foregroundStyle(MailrTheme.ink)
+                .lineSpacing(4)
                 .scrollContentBackground(.hidden)
                 .focused($focusedField, equals: .body)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
 
             if draft.body.isEmpty {
                 Text("Write your message…")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 18)
+                    .font(.system(size: 14.5, weight: .regular, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
+                    .padding(.horizontal, 19)
+                    .padding(.vertical, 20)
                     .allowsHitTesting(false)
             }
         }
@@ -188,27 +242,30 @@ struct ComposeView: View {
                 ForEach(draft.attachments) { attachment in
                     HStack(spacing: 6) {
                         Image(systemName: "paperclip")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(MailrTheme.accent)
                         Text(attachment.filename)
-                            .font(.caption)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkSecondary)
                             .lineLimit(1)
                         Button {
                             draft.attachments.removeAll { $0.id == attachment.id }
                         } label: {
                             Image(systemName: "xmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .font(.system(size: 11))
+                                .foregroundStyle(MailrTheme.inkTertiary)
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(.quaternary.opacity(0.5), in: Capsule())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(MailrTheme.surfaceSoft, in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(MailrTheme.hairline, lineWidth: 1)
+                    }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 4)
         }
     }
 
@@ -219,13 +276,13 @@ struct ComposeView: View {
             } label: {
                 Image(systemName: "paperclip")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(MailrIconButtonStyle(size: 34))
             .mailrHelp("Attach a file")
 
             if !draft.attachments.isEmpty {
                 Text("\(draft.attachments.count) attachment\(draft.attachments.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
             }
 
             Spacer()
@@ -233,6 +290,7 @@ struct ComposeView: View {
             Button("Cancel") {
                 dismiss()
             }
+            .font(.system(size: 13, weight: .medium, design: .rounded))
             .keyboardShortcut(.cancelAction)
 
             Button {
@@ -248,12 +306,13 @@ struct ComposeView: View {
                     Text("Send")
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.mailrPrimary)
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(draft.isSending)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 11)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background { MailrBarBackground(edge: .top) }
     }
 
     private func send() {

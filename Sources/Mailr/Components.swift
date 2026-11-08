@@ -20,12 +20,12 @@ struct AvatarView: View {
 
     private var color: Color {
         let palette: [Color] = [
-            Color(red: 0.30, green: 0.49, blue: 0.90),
-            Color(red: 0.85, green: 0.42, blue: 0.31),
-            Color(red: 0.24, green: 0.63, blue: 0.52),
-            Color(red: 0.62, green: 0.42, blue: 0.82),
-            Color(red: 0.83, green: 0.59, blue: 0.20),
-            Color(red: 0.29, green: 0.60, blue: 0.72)
+            Color(red: 0.36, green: 0.26, blue: 0.96),
+            Color(red: 0.00, green: 0.69, blue: 0.94),
+            Color(red: 0.64, green: 0.35, blue: 0.98),
+            Color(red: 0.10, green: 0.78, blue: 0.68),
+            Color(red: 0.94, green: 0.41, blue: 0.62),
+            Color(red: 0.96, green: 0.64, blue: 0.21)
         ]
         let hash = address.lowercased().unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0x7fffffff }
         return palette[hash % palette.count]
@@ -36,16 +36,32 @@ struct AvatarView: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [color.opacity(0.95), color.opacity(0.72)],
+                        colors: [color, color.opacity(0.72)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.40), .clear],
+                        center: .topLeading,
+                        startRadius: 0,
+                        endRadius: size * 0.72
+                    )
+                )
+                .blendMode(.softLight)
+
             Text(initials)
                 .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
                 .foregroundStyle(.white)
         }
         .frame(width: size, height: size)
+        .overlay {
+            Circle().strokeBorder(Color.white.opacity(0.55), lineWidth: 1)
+        }
+        .shadow(color: color.opacity(0.24), radius: size * 0.24, y: size * 0.10)
         .accessibilityLabel(Text(name.isEmpty ? address : name))
     }
 }
@@ -81,8 +97,9 @@ enum MailDateFormat {
 struct UnreadDot: View {
     var body: some View {
         Circle()
-            .fill(Color.accentColor)
+            .fill(MailrTheme.accentGradient)
             .frame(width: 7, height: 7)
+            .shadow(color: MailrTheme.accent.opacity(0.35), radius: 4)
             .accessibilityLabel("Unread")
     }
 }
@@ -92,12 +109,15 @@ struct CountBadge: View {
 
     var body: some View {
         Text(count > 999 ? "999+" : "\(count)")
-            .font(.caption2.weight(.semibold))
+            .font(.system(size: 10, weight: .bold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1.5)
-            .background(.quaternary.opacity(0.7), in: Capsule())
+            .foregroundStyle(MailrTheme.accentDeep)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(MailrTheme.accent.opacity(0.11), in: Capsule())
+            .overlay {
+                Capsule().strokeBorder(MailrTheme.accent.opacity(0.13), lineWidth: 1)
+            }
     }
 }
 
@@ -106,32 +126,42 @@ struct AttachmentChip: View {
     var onSave: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: iconName)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 20)
+        HStack(spacing: 9) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(MailrTheme.accent.opacity(0.10))
+                Image(systemName: iconName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(MailrTheme.accent)
+            }
+            .frame(width: 28, height: 28)
+
             VStack(alignment: .leading, spacing: 1) {
                 Text(attachment.filename)
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(MailrTheme.ink)
                     .lineLimit(1)
                 Text(attachment.byteCountLabel)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
             }
-            Spacer(minLength: 2)
+            Spacer(minLength: 4)
             Button(action: onSave) {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 15))
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(MailrTheme.accent)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
             .mailrHelp("Save attachment")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(maxWidth: 250)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.vertical, 8)
+        .frame(maxWidth: 260)
+        .background(MailrTheme.surfaceSoft, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(MailrTheme.border, lineWidth: 1)
+        }
     }
 
     private var iconName: String {
@@ -189,16 +219,29 @@ struct EmptyStateView: View {
     let message: String
 
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 38, weight: .light))
-                .foregroundStyle(.tertiary)
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .strokeBorder(MailrTheme.accent.opacity(0.10), lineWidth: 1)
+                    .frame(width: 132, height: 132)
+                Circle()
+                    .strokeBorder(MailrTheme.cyan.opacity(0.12), lineWidth: 1)
+                    .frame(width: 106, height: 106)
+                Circle()
+                    .fill(MailrTheme.accent.opacity(0.08))
+                    .frame(width: 80, height: 80)
+                Image(systemName: icon)
+                    .font(.system(size: 32, weight: .light))
+                    .foregroundStyle(MailrTheme.accentGradient)
+            }
+
             Text(title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                .foregroundStyle(MailrTheme.ink)
+
             Text(message)
-                .font(.callout)
-                .foregroundStyle(.tertiary)
+                .font(.system(size: 13.5, weight: .regular, design: .rounded))
+                .foregroundStyle(MailrTheme.inkSecondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340)
         }

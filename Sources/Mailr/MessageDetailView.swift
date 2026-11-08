@@ -49,6 +49,7 @@ struct MessageDetailView: View {
         }
         .navigationTitle("")
         .mailrInlineNavigationTitle()
+        .background { MailrBackground() }
         .toolbar {
             if let summary = model.currentMessage?.summary ?? model.selectedSummary {
                 #if os(iOS)
@@ -152,21 +153,27 @@ struct MessageReaderView: View {
         VStack(spacing: 0) {
             header
 
-            Divider()
-
             if hasRemoteContent {
                 remoteBanner
-                Divider()
             }
 
             bodyContent
+                .background(MailrTheme.surfaceStrong)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(MailrTheme.border, lineWidth: 1)
+                }
+                .shadow(color: MailrTheme.shadow, radius: 14, y: 6)
+                .padding(.horizontal, 12)
+                .padding(.top, hasRemoteContent ? 8 : 4)
+                .padding(.bottom, visibleAttachments.isEmpty ? 12 : 8)
 
             if !visibleAttachments.isEmpty {
-                Divider()
                 attachmentBar
             }
         }
-        .background(.background)
+        .background { MailrBackground() }
         .fileExporter(
             isPresented: $isExporting,
             document: exportDocument,
@@ -181,41 +188,48 @@ struct MessageReaderView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 11) {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .top, spacing: 12) {
                 AvatarView(
                     name: message.summary.from.first?.name ?? "",
                     address: message.summary.senderAddress,
-                    size: 38
+                    size: 42
                 )
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(message.summary.senderDisplayName)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MailrTheme.ink)
                     Text(message.summary.senderAddress)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
                         .textSelection(.enabled)
                 }
 
                 Spacer()
 
                 Text(MailDateFormat.detailDate(message.summary.date))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkSecondary)
                     .multilineTextAlignment(.trailing)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(MailrTheme.surfaceSoft, in: Capsule())
             }
 
             Text(message.summary.subject)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                .font(.system(size: 23, weight: .bold, design: .rounded))
+                .foregroundStyle(MailrTheme.inkGradient)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
 
             recipientsLine
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 16)
-        .padding(.bottom, 14)
+        .padding(16)
+        .mailrCard(radius: 22, shadowRadius: 14)
+        .padding(.horizontal, 12)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
     }
 
     private var recipientsLine: some View {
@@ -228,21 +242,22 @@ struct MessageReaderView: View {
         }
 
         return Text(parts.joined(separator: "   ·   "))
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+            .foregroundStyle(MailrTheme.inkTertiary)
             .lineLimit(2)
             .textSelection(.enabled)
     }
 
     private var remoteBanner: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 9) {
             Image(systemName: model.remoteContentAllowed ? "eye" : "eye.slash")
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(MailrTheme.amber)
             Text(model.remoteContentAllowed
                  ? "Remote images are visible. They may let the sender know you opened this message."
                  : "Remote images are blocked to protect your privacy.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(MailrTheme.inkSecondary)
                 .lineLimit(2)
 
             Spacer()
@@ -250,11 +265,18 @@ struct MessageReaderView: View {
             Button(model.remoteContentAllowed ? "Block" : "Load") {
                 model.remoteContentAllowed.toggle()
             }
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
             .controlSize(.small)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 8)
-        .background(Color.orange.opacity(0.08))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(MailrTheme.amber.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(MailrTheme.amber.opacity(0.20), lineWidth: 1)
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
     }
 
     @ViewBuilder
@@ -268,13 +290,15 @@ struct MessageReaderView: View {
         } else if let text = message.text, !text.isEmpty {
             ScrollView {
                 Text(text)
-                    .font(.system(size: 14))
-                    .lineSpacing(3)
+                    .font(.system(size: 14.5, weight: .regular, design: .rounded))
+                    .foregroundStyle(MailrTheme.ink)
+                    .lineSpacing(4)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 22)
-                    .padding(.vertical, 18)
+                    .padding(.vertical, 20)
             }
+            .background(MailrTheme.surfaceStrong)
         } else {
             EmptyStateView(
                 icon: "doc",
@@ -293,10 +317,10 @@ struct MessageReaderView: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
         }
-        .background(.bar)
+        .background { MailrBarBackground(edge: .top) }
     }
 
     private func export(_ attachment: MailAttachment) {

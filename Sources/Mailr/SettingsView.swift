@@ -18,7 +18,9 @@ struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
 
             if model.runtimes.isEmpty {
                 List {
@@ -34,28 +36,37 @@ struct SettingsView: View {
 
                     privacySection
                 }
-                .listStyle(.inset)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             } else {
                 List {
-                    Section("Accounts") {
+                    Section {
                         ForEach(model.runtimes) { runtime in
                             accountRow(runtime)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
+                                .mailrCard(radius: 16, shadowRadius: 8)
+                                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
                         }
+                    } header: {
+                        MailrSectionLabel(text: "Accounts")
+                            .padding(.leading, 4)
                     }
 
                     privacySection
                 }
-                .listStyle(.inset)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
 
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
             footer
         }
         .modifier(SettingsSizing())
-        .background(.background)
+        .background { MailrBackground() }
+        .tint(MailrTheme.accent)
         .onAppear { lock.refreshBiometry() }
         .sheet(item: $editingRequest) { request in
             AccountEditorView(account: request.account)
@@ -99,13 +110,17 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 12) {
+            MailrLogoMark(size: 38)
+
+            VStack(alignment: .leading, spacing: 3) {
+                MailrSectionLabel(text: "Settings")
                 Text("Accounts")
-                    .font(.title3.weight(.semibold))
+                    .font(.system(size: 25, weight: .bold, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkGradient)
                 Text("Connect Mailr directly to your mail servers.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkSecondary)
             }
 
             Spacer()
@@ -119,47 +134,68 @@ struct SettingsView: View {
                 Label("Add Account", systemImage: "plus")
                 #endif
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
+            .buttonStyle(.mailrPrimary)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
     }
 
     private var privacySection: some View {
-        Section("Privacy") {
+        Section {
             Button {
                 showSecurity = true
             } label: {
                 HStack(spacing: 12) {
-                    Image(systemName: lock.isEnabled ? "lock.shield.fill" : "lock.shield")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(lock.isEnabled ? Color.accentColor : Color.secondary)
-                        .frame(width: 26)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(
+                                lock.isEnabled
+                                    ? AnyShapeStyle(MailrTheme.accentGradient)
+                                    : AnyShapeStyle(MailrTheme.surfaceSoft)
+                            )
+                        Image(systemName: lock.isEnabled ? "lock.shield.fill" : "lock.shield")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(lock.isEnabled ? Color.white : MailrTheme.inkSecondary)
+                    }
+                    .frame(width: 32, height: 32)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("App Lock")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                            .foregroundStyle(MailrTheme.ink)
                         Text(securitySubtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkSecondary)
                     }
 
                     Spacer()
 
-                    Text(lock.isEnabled ? "On" : "Off")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(lock.isEnabled ? "ON" : "OFF")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .tracking(1.2)
+                        .foregroundStyle(lock.isEnabled ? MailrTheme.accentDeep : MailrTheme.inkTertiary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            lock.isEnabled ? MailrTheme.accent.opacity(0.10) : MailrTheme.surfaceSoft,
+                            in: Capsule()
+                        )
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(MailrTheme.inkTertiary)
                 }
+                .padding(.vertical, 2)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .listRowInsets(EdgeInsets(top: 8, leading: 14, bottom: 8, trailing: 14))
+            .mailrCard(radius: 16, shadowRadius: 8)
+            .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 4, trailing: 12))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+        } header: {
+            MailrSectionLabel(text: "Privacy")
+                .padding(.leading, 4)
         }
     }
 
@@ -178,33 +214,36 @@ struct SettingsView: View {
             AvatarView(
                 name: runtime.account.displayName,
                 address: runtime.account.emailAddress,
-                size: 36
+                size: 38
             )
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(runtime.account.displayName)
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MailrTheme.ink)
                     if runtime.account.isDemo {
                         Text("DEMO")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1.5)
-                            .background(.quaternary, in: Capsule())
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .tracking(0.8)
+                            .foregroundStyle(MailrTheme.accentDeep)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(MailrTheme.accent.opacity(0.10), in: Capsule())
                     }
                 }
                 Text(runtime.account.emailAddress)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
                 if runtime.account.isDemo {
                     Text("Offline demo account")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
                 } else {
                     Text("\(runtime.account.provider.displayName) · IMAP \(runtime.account.incoming.host.isEmpty ? "not configured" : runtime.account.incoming.host)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkTertiary)
+                        .lineLimit(1)
                 }
             }
 
@@ -222,19 +261,21 @@ struct SettingsView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(MailrTheme.inkTertiary)
                 .mailrHelp("Remove account")
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     private var footer: some View {
         HStack(spacing: 10) {
             Image(systemName: "lock.shield")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(MailrTheme.accent)
             Text(keychainMessage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                .foregroundStyle(MailrTheme.inkSecondary)
 
             Spacer()
 
@@ -245,6 +286,7 @@ struct SettingsView: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
+        .background { MailrBarBackground(edge: .top) }
     }
 
     private var keychainMessage: String {

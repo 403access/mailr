@@ -9,34 +9,59 @@ struct LockScreenView: View {
 
     var body: some View {
         ZStack {
-            Color.mailrWindowBackground
-                .ignoresSafeArea()
+            MailrBackground()
 
-            LinearGradient(
-                colors: [Color.accentColor.opacity(0.16), .clear],
-                startPoint: .top,
-                endPoint: .center
-            )
-            .ignoresSafeArea()
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .strokeBorder(
+                        MailrTheme.accent.opacity(0.10 - Double(index) * 0.024),
+                        lineWidth: 1
+                    )
+                    .frame(
+                        width: 230 + CGFloat(index) * 62,
+                        height: 230 + CGFloat(index) * 62
+                    )
+            }
 
-            VStack(spacing: 14) {
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 46, weight: .light))
-                    .foregroundStyle(.tint)
-                    .padding(.bottom, 2)
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(MailrTheme.accent.opacity(0.10))
+                        .frame(width: 96, height: 96)
+                    Circle()
+                        .strokeBorder(MailrTheme.accent.opacity(0.16), lineWidth: 1)
+                        .frame(width: 96, height: 96)
 
-                Text("Mailr is Locked")
-                    .font(.title2.weight(.semibold))
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(MailrTheme.accentGradient)
+                            .shadow(color: MailrTheme.accent.opacity(0.38), radius: 18, y: 8)
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .frame(width: 60, height: 60)
+                }
+                .padding(.bottom, 2)
 
-                Text(unlockPrompt)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                VStack(spacing: 7) {
+                    MailrSectionLabel(text: "Secure Session")
+
+                    Text("Mailr is Locked")
+                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkGradient)
+
+                    Text(unlockPrompt)
+                        .font(.system(size: 12.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkSecondary)
+                        .multilineTextAlignment(.center)
+                }
 
                 if let message = lock.lastErrorMessage {
                     Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkSecondary)
+                        .multilineTextAlignment(.center)
                         .transition(.opacity)
                 }
 
@@ -49,13 +74,23 @@ struct LockScreenView: View {
                     )
                     .frame(minWidth: 190)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(.mailrPrimary)
                 .disabled(lock.isAuthenticating)
-                .padding(.top, 6)
+                .padding(.top, 4)
+
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.shield")
+                        .font(.system(size: 9.5, weight: .semibold))
+                    Text("Protected by LocalAuthentication")
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                }
+                .foregroundStyle(MailrTheme.inkTertiary)
             }
             .multilineTextAlignment(.center)
-            .padding(32)
+            .padding(30)
+            .frame(maxWidth: 370)
+            .mailrCard(radius: 32, shadowRadius: 30)
+            .padding(24)
         }
         .animation(.snappy(duration: 0.2), value: lock.lastErrorMessage)
         .task(id: scenePhase) {

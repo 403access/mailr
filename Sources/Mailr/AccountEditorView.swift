@@ -38,7 +38,9 @@ struct AccountEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
@@ -59,22 +61,24 @@ struct AccountEditorView: View {
                             "Unencrypted connections are only appropriate for a local mail server. Credentials will be sent without TLS.",
                             systemImage: "exclamationmark.triangle"
                         )
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.amber)
                         .padding(.horizontal, 2)
                     }
                 }
-                .padding(18)
+                .padding(16)
             }
 
             if let testOutcome {
-                Divider()
+                Rectangle()
+                    .fill(MailrTheme.hairline)
+                    .frame(height: 1)
                 HStack(spacing: 7) {
                     Image(systemName: testOutcome.success ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(testOutcome.success ? .green : .red)
+                        .foregroundStyle(testOutcome.success ? MailrTheme.mint : .red)
                     Text(testOutcome.message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkSecondary)
                         .lineLimit(2)
                     Spacer()
                 }
@@ -83,12 +87,14 @@ struct AccountEditorView: View {
             }
 
             if let errorText {
-                Divider()
+                Rectangle()
+                    .fill(MailrTheme.hairline)
+                    .frame(height: 1)
                 HStack(spacing: 7) {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundStyle(.red)
                     Text(errorText)
-                        .font(.caption)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.red)
                         .lineLimit(2)
                     Spacer()
@@ -97,11 +103,14 @@ struct AccountEditorView: View {
                 .padding(.vertical, 8)
             }
 
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
             footer
         }
         .modifier(AccountEditorSizing())
-        .background(.background)
+        .background { MailrBackground() }
+        .tint(MailrTheme.accent)
         .onChange(of: account.provider) { _, newValue in
             applyPreset(for: newValue)
         }
@@ -111,21 +120,23 @@ struct AccountEditorView: View {
     }
 
     private var header: some View {
-        HStack {
-            Text(isNew ? "Add Account" : "Edit Account")
-                .font(.headline)
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                MailrSectionLabel(text: "Account")
+                Text(isNew ? "Add Account" : "Edit Account")
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkGradient)
+            }
             Spacer()
             Button {
                 dismiss()
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 16))
+                Image(systemName: "xmark")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MailrIconButtonStyle(size: 32))
             .keyboardShortcut(.cancelAction)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 
@@ -220,9 +231,10 @@ struct AccountEditorView: View {
             if isTesting {
                 ProgressView()
                     .controlSize(.small)
+                    .tint(MailrTheme.accent)
                 Text("Testing connection…")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkSecondary)
             }
 
             Spacer()
@@ -230,12 +242,14 @@ struct AccountEditorView: View {
             Button("Cancel") {
                 dismiss()
             }
+            .font(.system(size: 13, weight: .medium, design: .rounded))
 
             Button {
                 test()
             } label: {
                 Label("Test", systemImage: "bolt.horizontal")
             }
+            .font(.system(size: 13, weight: .medium, design: .rounded))
             .disabled(isTesting || isSaving)
 
             Button {
@@ -251,12 +265,13 @@ struct AccountEditorView: View {
                     Text("Save")
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.mailrPrimary)
             .keyboardShortcut(.defaultAction)
             .disabled(isTesting || isSaving)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .background { MailrBarBackground(edge: .top) }
     }
 
     private func sectionCard<Content: View>(
@@ -266,13 +281,13 @@ struct AccountEditorView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: symbol)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(MailrTheme.ink)
             content()
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .mailrCard(radius: 18, shadowRadius: 10)
     }
 
     private func fieldRow<Content: View>(
@@ -281,8 +296,8 @@ struct AccountEditorView: View {
     ) -> some View {
         HStack(spacing: 10) {
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(MailrTheme.inkSecondary)
                 .frame(width: 74, alignment: .trailing)
             content()
         }

@@ -35,7 +35,7 @@ make docs-build  # production build
 - **Attachments.** View, download/save with the system file exporter, or attach files while composing.
 - **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
 - **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
-- **Platform integration.** Keychain password storage, dark mode, search, pull-to-refresh, and adaptive sheets.
+- **Platform integration.** Keychain password storage, an Aurora light theme, search, pull-to-refresh, and adaptive sheets.
 - **App Lock.** Optional Face ID or Touch ID (with device passcode fallback) when Mailr launches or returns to the foreground. Manage it under Settings → Privacy → App Lock.
 - **No third-party dependencies.** Only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, LocalAuthentication, Foundation, and SQLite3.
 
@@ -119,6 +119,7 @@ Sources/
     AppLock.swift           Face ID / Touch ID lock state via LocalAuthentication
     LockScreenView.swift    Opaque unlock cover
     SecuritySettingsView.swift App Lock setup page
+    Theme.swift             Aurora light palette, surfaces, and brand components
     Platform.swift          iOS/macOS conditional helpers
 Tests/MailCoreTests/        Parser, builder, IMAP, and demo-service tests
 project.yml                 XcodeGen definition for the iOS app
@@ -176,6 +177,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 - No OAuth sign-in (app passwords only).
 - No STARTTLS upgrade; direct TLS only.
 - No background push or scheduled sync. Mail refreshes on launch, when the app becomes active, on pull-to-refresh, and manually.
+- Dark mode is not implemented yet; the app is light-only for now.
 - Message lists fetch the newest 100 messages and search is local. There is no server-side search yet.
 - Compose does not autosave drafts, and there is no conversation/thread view or undo-delete.
 - Attachments are downloaded on demand from the full message body; there is no BODYSTRUCTURE-based lazy attachment fetching.

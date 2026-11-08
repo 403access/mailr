@@ -8,11 +8,41 @@ struct SidebarView: View {
         @Bindable var model = model
 
         List(selection: $model.selection) {
+            Section {
+                HStack(spacing: 10) {
+                    MailrLogoMark(size: 32)
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("MAILR")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .tracking(2.4)
+                            .foregroundStyle(MailrTheme.inkGradient)
+                        Text("Secure messaging")
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkTertiary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.vertical, 6)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
+
             ForEach(model.runtimes) { runtime in
                 Section {
                     ForEach(runtime.mailboxes) { mailbox in
-                        MailboxRow(mailbox: mailbox)
-                            .tag(MailboxSelection(accountID: runtime.id, mailboxPath: mailbox.path))
+                        MailboxRow(
+                            mailbox: mailbox,
+                            isSelected: model.selection == MailboxSelection(
+                                accountID: runtime.id,
+                                mailboxPath: mailbox.path
+                            )
+                        )
+                        .tag(MailboxSelection(accountID: runtime.id, mailboxPath: mailbox.path))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                     }
 
                     if runtime.mailboxes.isEmpty {
@@ -22,13 +52,14 @@ struct SidebarView: View {
                                     .controlSize(.small)
                             } else {
                                 Image(systemName: "exclamationmark.triangle")
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(MailrTheme.amber)
                             }
                             Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(MailrTheme.inkTertiary)
                         }
                         .padding(.vertical, 2)
+                        .listRowBackground(Color.clear)
                     }
                 } header: {
                     AccountHeader(runtime: runtime)
@@ -36,7 +67,9 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Mailr")
+        .scrollContentBackground(.hidden)
+        .background { MailrBackground() }
+        .navigationTitle("")
         .safeAreaInset(edge: .bottom, spacing: 0) {
             sidebarFooter
         }
@@ -53,13 +86,17 @@ struct SidebarView: View {
 
     private var sidebarFooter: some View {
         VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 4) {
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
+
+            HStack(spacing: 8) {
                 Button {
                     model.newCompose()
                 } label: {
                     Image(systemName: "square.and.pencil")
                 }
+                .buttonStyle(.mailrIcon)
                 .mailrHelp("New Message (⌘N)")
 
                 Spacer()
@@ -74,6 +111,7 @@ struct SidebarView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .buttonStyle(.mailrIcon)
                     .mailrHelp("Refresh Mail (⇧⌘R)")
                 }
 
@@ -82,14 +120,13 @@ struct SidebarView: View {
                 } label: {
                     Image(systemName: "gearshape")
                 }
+                .buttonStyle(.mailrIcon)
                 .mailrHelp("Accounts & Settings")
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
-            .padding(.vertical, 9)
+            .padding(.vertical, 10)
         }
-        .background(.bar)
+        .background { MailrBarBackground(edge: .top) }
     }
 }
 
@@ -103,28 +140,30 @@ struct MailboxDrawer: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
             mailboxList
-            Divider()
+            Rectangle()
+                .fill(MailrTheme.hairline)
+                .frame(height: 1)
             footer
         }
-        .background(Color.mailrWindowBackground)
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "envelope.fill")
-                .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
+        HStack(spacing: 11) {
+            MailrLogoMark(size: 38)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text("Mailr")
-                    .font(.title3.weight(.bold))
+                Text("MAILR")
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .tracking(2.8)
+                    .foregroundStyle(MailrTheme.inkGradient)
                 if let account = model.activeAccount {
                     Text(account.emailAddress)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(MailrTheme.inkSecondary)
                         .lineLimit(1)
                 }
             }
@@ -132,12 +171,9 @@ struct MailboxDrawer: View {
             Spacer(minLength: 8)
 
             Button(action: onClose) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .symbolRenderingMode(.hierarchical)
+                Image(systemName: "xmark")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MailrIconButtonStyle(size: 32))
             .accessibilityLabel("Close menu")
         }
         .padding(.horizontal, 16)
@@ -145,15 +181,16 @@ struct MailboxDrawer: View {
     }
 
     private var mailboxList: some View {
-        List {
-            if model.runtimes.isEmpty {
-                Section {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 20) {
+                if model.runtimes.isEmpty {
                     VStack(spacing: 14) {
                         EmptyStateView(
                             icon: "envelope",
                             title: "No Accounts",
                             message: "Add an account to start reading and sending mail."
                         )
+                        .frame(height: 220)
 
                         Button {
                             model.showSettings = true
@@ -161,41 +198,43 @@ struct MailboxDrawer: View {
                         } label: {
                             Label("Add Account", systemImage: "plus")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.mailrPrimary)
                     }
                     .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
                 }
-            }
 
-            ForEach(model.runtimes) { runtime in
-                Section {
-                    ForEach(runtime.mailboxes) { mailbox in
-                        mailboxButton(runtime: runtime, mailbox: mailbox)
-                    }
+                ForEach(model.runtimes) { runtime in
+                    VStack(alignment: .leading, spacing: 4) {
+                        AccountHeader(runtime: runtime)
+                            .padding(.horizontal, 8)
 
-                    if runtime.mailboxes.isEmpty {
-                        HStack(spacing: 8) {
-                            if runtime.isLoadingMailboxes {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "exclamationmark.triangle")
-                                    .foregroundStyle(.orange)
-                            }
-                            Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        ForEach(runtime.mailboxes) { mailbox in
+                            mailboxButton(runtime: runtime, mailbox: mailbox)
                         }
-                        .padding(.vertical, 2)
+
+                        if runtime.mailboxes.isEmpty {
+                            HStack(spacing: 8) {
+                                if runtime.isLoadingMailboxes {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "exclamationmark.triangle")
+                                        .foregroundStyle(MailrTheme.amber)
+                                }
+                                Text(runtime.isLoadingMailboxes ? "Connecting…" : "No mailboxes available")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(MailrTheme.inkTertiary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                        }
                     }
-                } header: {
-                    AccountHeader(runtime: runtime)
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 16)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
+        .scrollIndicators(.hidden)
     }
 
     private func mailboxButton(runtime: AccountRuntime, mailbox: Mailbox) -> some View {
@@ -206,43 +245,43 @@ struct MailboxDrawer: View {
             onSelect(selection)
         } label: {
             HStack(spacing: 8) {
-                MailboxRow(mailbox: mailbox)
+                MailboxRow(mailbox: mailbox, isSelected: isSelected)
                 Spacer(minLength: 0)
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.tint)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(MailrTheme.accent)
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var footer: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 10) {
             Button {
                 model.newCompose()
                 onClose()
             } label: {
-                Image(systemName: "square.and.pencil")
+                Label("New Message", systemImage: "square.and.pencil")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.mailrPrimary)
             .accessibilityLabel("New Message")
-
-            Spacer()
 
             if model.isRefreshing {
                 ProgressView()
                     .controlSize(.small)
-                    .padding(.trailing, 4)
+                    .frame(width: 38, height: 38)
             } else {
                 Button {
                     Task { await model.refreshAll() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
+                .buttonStyle(.mailrIcon)
                 .accessibilityLabel("Refresh Mail")
             }
 
@@ -252,14 +291,12 @@ struct MailboxDrawer: View {
             } label: {
                 Image(systemName: "gearshape")
             }
+            .buttonStyle(.mailrIcon)
             .accessibilityLabel("Accounts & Settings")
         }
-        .font(.system(size: 18))
-        .buttonStyle(.borderless)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.bar)
+        .background { MailrBarBackground(edge: .top) }
     }
 }
 
@@ -269,21 +306,24 @@ struct AccountHeader: View {
     let runtime: AccountRuntime
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             AvatarView(
                 name: runtime.account.displayName,
                 address: runtime.account.emailAddress,
-                size: 20
+                size: 21
             )
 
-            VStack(alignment: .leading, spacing: 0) {
-                Text(runtime.account.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(runtime.account.displayName.uppercased())
+                    .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                    .tracking(1.5)
+                    .foregroundStyle(MailrTheme.inkTertiary)
+                    .lineLimit(1)
                 if runtime.account.isDemo {
-                    Text("Offline demo")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
+                    Text("OFFLINE DEMO")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .tracking(1)
+                        .foregroundStyle(MailrTheme.accent.opacity(0.70))
                 }
             }
 
@@ -291,8 +331,8 @@ struct AccountHeader: View {
 
             if let error = runtime.error {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(MailrTheme.amber)
                     .mailrHelp(error)
             }
         }
@@ -304,16 +344,39 @@ struct AccountHeader: View {
 
 struct MailboxRow: View {
     let mailbox: Mailbox
+    var isSelected: Bool = false
+
+    private var iconIsProminent: Bool {
+        mailbox.role == .inbox || mailbox.unreadCount > 0
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: mailbox.role.symbolName)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(mailbox.role == .inbox ? Color.accentColor : Color.secondary)
-                .frame(width: 18)
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(
+                        iconIsProminent
+                            ? AnyShapeStyle(MailrTheme.accentGradient)
+                            : AnyShapeStyle(MailrTheme.surfaceSoft)
+                    )
+                Image(systemName: mailbox.role.symbolName)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(iconIsProminent ? Color.white : MailrTheme.inkSecondary)
+            }
+            .frame(width: 26, height: 26)
+            .shadow(
+                color: iconIsProminent ? MailrTheme.accent.opacity(0.22) : .clear,
+                radius: 6,
+                y: 2
+            )
 
             Text(mailbox.name)
-                .font(.system(size: 13, weight: mailbox.unreadCount > 0 ? .semibold : .regular))
+                .font(.system(
+                    size: 13,
+                    weight: mailbox.unreadCount > 0 ? .semibold : .medium,
+                    design: .rounded
+                ))
+                .foregroundStyle(isSelected ? MailrTheme.accentDeep : MailrTheme.ink)
                 .lineLimit(1)
 
             Spacer(minLength: 4)
@@ -322,6 +385,17 @@ struct MailboxRow: View {
                 CountBadge(count: mailbox.unreadCount)
             }
         }
-        .padding(.vertical, 1)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? AnyShapeStyle(MailrTheme.selectionGradient) : AnyShapeStyle(Color.clear))
+        }
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(MailrTheme.accent.opacity(0.18), lineWidth: 1)
+            }
+        }
     }
 }

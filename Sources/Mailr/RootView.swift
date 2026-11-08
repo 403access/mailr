@@ -11,6 +11,8 @@ struct RootView: View {
         @Bindable var model = model
 
         ZStack {
+            MailrBackground()
+
             Group {
                 if horizontalSizeClass == .compact {
                     CompactRootView()
@@ -29,6 +31,8 @@ struct RootView: View {
             }
         }
         .modifier(MailrWindowSizing())
+        .preferredColorScheme(.light)
+        .tint(MailrTheme.accent)
         .animation(.easeInOut(duration: 0.18), value: lock.isLocked)
         .sheet(item: $model.compose) { draft in
             ComposeView(draft: draft)
@@ -55,12 +59,15 @@ struct RootView: View {
         .overlay(alignment: .bottom) {
             if let status = model.statusText, !lock.isLocked {
                 Text(status)
-                    .font(.callout.weight(.medium))
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay(Capsule().strokeBorder(.separator.opacity(0.6)))
-                    .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                    .padding(.vertical, 10)
+                    .background(MailrTheme.accentGradient, in: Capsule())
+                    .overlay {
+                        Capsule().strokeBorder(Color.white.opacity(0.28), lineWidth: 1)
+                    }
+                    .shadow(color: MailrTheme.accent.opacity(0.35), radius: 16, y: 8)
                     .padding(.bottom, 22)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -136,7 +143,7 @@ struct CompactRootView: View {
             .accessibilityHidden(isDrawerOpen)
 
             if isDrawerOpen {
-                Color.black.opacity(0.3)
+                MailrTheme.ink.opacity(0.34)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture { closeDrawer() }
@@ -154,12 +161,39 @@ struct CompactRootView: View {
                 .frame(width: drawerWidth)
                 .frame(maxHeight: .infinity)
                 .background {
-                    Color.mailrWindowBackground.ignoresSafeArea()
+                    ZStack {
+                        MailrTheme.baseTop
+                        LinearGradient(
+                            colors: [MailrTheme.violet.opacity(0.14), MailrTheme.cyan.opacity(0.08)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                    .ignoresSafeArea()
+                }
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 30,
+                        topTrailingRadius: 30,
+                        style: .continuous
+                    )
+                )
+                .overlay {
+                    UnevenRoundedRectangle(
+                        topLeadingRadius: 0,
+                        bottomLeadingRadius: 0,
+                        bottomTrailingRadius: 30,
+                        topTrailingRadius: 30,
+                        style: .continuous
+                    )
+                    .strokeBorder(MailrTheme.border, lineWidth: 1)
                 }
                 .offset(x: drawerDragOffset)
                 .gesture(drawerDismissGesture)
                 .transition(.move(edge: .leading))
-                .shadow(color: .black.opacity(0.18), radius: 20, x: 8)
+                .shadow(color: MailrTheme.accent.opacity(0.20), radius: 30, x: 12)
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.88), value: isDrawerOpen)

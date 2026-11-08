@@ -35,6 +35,7 @@
 		D5C2D49ED21FC8075102AB2C /* HTMLMessageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7996F1F99E2E6CCC7A9E14 /* HTMLMessageView.swift */; };
 		E2F599F0E8B308D5A9DDACF0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB62AAA52A645BD60B307499 /* Assets.xcassets */; };
 		E95FF9C2523BA28EDF8FA50E /* MIMEParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC989D2AAE2E013B7B218EF1 /* MIMEParser.swift */; };
+		ECB5B56F9F9A07488A9722AD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52EA5C43174135F64DD28AEC /* Theme.swift */; };
 		F3937A7CD8668A4F73BBDC31 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32563F04E6956615A68024FE /* AppModel.swift */; };
 		F3B9C29301E47563D080EC4E /* IMAPSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */; };
 /* End PBXBuildFile section */
@@ -75,6 +76,7 @@
 		383E7ECECD240B9B1A3EEBC6 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
 		493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IMAPSupport.swift; sourceTree = "<group>"; };
 		4E18ACBD9F74A6D607ED31DF /* DemoMailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoMailService.swift; sourceTree = "<group>"; };
+		52EA5C43174135F64DD28AEC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		545272ED545D8F8D768628A9 /* SocketConnection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocketConnection.swift; sourceTree = "<group>"; };
 		6BF204ABB92488F6E65AC9F3 /* AccountEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountEditorView.swift; sourceTree = "<group>"; };
 		774150DAE1ABE36641853150 /* Platform.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Platform.swift; sourceTree = "<group>"; };
@@ -154,6 +156,7 @@
 				C5E3062BF64301E4E5B7B4B6 /* SecuritySettingsView.swift */,
 				F19562D7018C7FA3D5FEE0A3 /* SettingsView.swift */,
 				876E4202A805A2FABD1D4325 /* SidebarView.swift */,
+				52EA5C43174135F64DD28AEC /* Theme.swift */,
 			);
 			path = Mailr;
 			sourceTree = "<group>";
@@ -302,6 +305,7 @@
 				8AB498D0D25A645B2DC79EA3 /* SecuritySettingsView.swift in Sources */,
 				71D8FED8912E34875DBEB8ED /* SettingsView.swift in Sources */,
 				45F4769DFFE58F94C44B4CF6 /* SidebarView.swift in Sources */,
+				ECB5B56F9F9A07488A9722AD /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

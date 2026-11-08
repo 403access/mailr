@@ -37,6 +37,15 @@ extension View {
     }
 
     @ViewBuilder
+    func mailrEmailKeyboard() -> some View {
+        #if os(iOS)
+        self.keyboardType(.emailAddress)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
     func mailrLargeDetent() -> some View {
         #if os(iOS)
         self.presentationDetents([.large])
@@ -67,11 +76,7 @@ extension View {
 
 extension Color {
     static var mailrWindowBackground: Color {
-        #if os(macOS)
-        Color(nsColor: .windowBackgroundColor)
-        #else
-        Color(uiColor: .systemBackground)
-        #endif
+        MailrTheme.baseTop
     }
 }
 

@@ -35,25 +35,31 @@ enum HTMLMessageDocument {
             padding: 18px 22px 28px;
             font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
             font-size: 14px;
-            line-height: 1.62;
-            color: #1d1d1f;
+            line-height: 1.65;
+            color: #1d2233;
             overflow-wrap: anywhere;
             -webkit-text-size-adjust: 100%;
           }
-          img { max-width: 100%; height: auto; }
+          img { max-width: 100%; height: auto; border-radius: 8px; }
           table { max-width: 100%; }
-          a { color: #0a66d6; }
+          a { color: #5b42f5; }
           blockquote {
-            border-left: 3px solid #d6d6d8;
+            border-left: 3px solid #d8d9ec;
             margin: 12px 0;
             padding-left: 14px;
-            color: #555;
+            color: #5c6070;
           }
           pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-          pre { background: rgba(127,127,127,0.12); padding: 10px; border-radius: 6px; overflow-x: auto; }
+          pre {
+            background: rgba(91, 66, 245, 0.07);
+            border: 1px solid rgba(91, 66, 245, 0.10);
+            padding: 10px;
+            border-radius: 8px;
+            overflow-x: auto;
+          }
           @media (prefers-color-scheme: dark) {
             body { color: #e8e8ea; }
-            a { color: #6cb0ff; }
+            a { color: #8b9dff; }
             blockquote { border-color: #4a4a4d; color: #b0b0b4; }
           }
         </style>
