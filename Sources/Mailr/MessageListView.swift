@@ -42,14 +42,6 @@ struct MessageListView: View {
                     Label("New Message", systemImage: "square.and.pencil")
                 }
                 .mailrHelp("New Message (⌘N)")
-
-                Button {
-                    Task { await model.refreshAll() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .mailrHelp("Refresh Mail (⇧⌘R)")
-                .disabled(model.isRefreshing)
             }
         }
         .searchable(
@@ -203,6 +195,9 @@ struct MessageListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .refreshable {
+            await model.loadMessages(preserveSelection: true)
+        }
     }
 
     private var compactList: some View {
