@@ -271,6 +271,12 @@ struct MessageRow: View {
                             .font(.system(size: 9.5, weight: .semibold))
                             .foregroundStyle(MailrTheme.inkTertiary)
                     }
+                    if !message.isOnMailbox {
+                        Image(systemName: "externaldrive.fill")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(MailrTheme.amber)
+                            .mailrHelp("Only on the host machine")
+                    }
 
                     Spacer(minLength: 4)
 

@@ -22,10 +22,24 @@ The suite covers:
 - Account, mailbox, message, body, and attachment persistence in SQLite
 - Legacy `accounts.json` migration into SQLite
 - `.env` parsing, provider inference, multi-account merging, and validation
+- Host archive database syncing, storage flags, request routing, and an HTTP round trip
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 66 tests pass on macOS. The iOS app itself is verified by building and
+All 74 tests pass on macOS. The iOS app itself is verified by building and
 launching in the simulator.
+
+## Host archive
+
+```bash
+make server        # loopback on 127.0.0.1:8787
+```
+
+The server keeps its database in `Application Support/Mailr/host-mail.sqlite3`.
+The macOS app starts it automatically when the configured host is loopback; use
+`make server` for the iOS app/Simulator or to keep it independent. For a
+physical iPhone, start it with `swift run MailrServer --host 0.0.0.0` and set
+`MAILR_HOST_SERVER=http://<Mac-LAN-IP>:8787` in `.env`. Set
+`MAILR_HOST_SERVER=off` to disable host syncing.
 
 ## Local accounts from .env
 

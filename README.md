@@ -2,6 +2,8 @@
 
 A native, privacy-first mail client for **iPhone and iPad**, with a macOS build from the same SwiftUI codebase. Mailr talks directly to IMAP and SMTP servers — there is no proxy, no account server, and no telemetry. It ships with a local demo mailbox so you can try the whole interface before configuring an account.
 
+An optional **host archive** runs on your own Mac and keeps a copy of every message the client retrieves. The reader shows whether a message is still on the actual IMAP mailbox, only in the host archive, or both.
+
 <br>
 
 | iPhone | iPad |
@@ -35,6 +37,7 @@ make docs-build  # production build
 - **Attachments.** View, download/save with the system file exporter, or attach files while composing.
 - **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
 - **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
+- **Optional host archive.** A small loopback HTTP server on your Mac stores every message the client retrieves, including mail that later disappears from the IMAP mailbox. Each opened message shows its storage location: on the mailbox, only on the host machine, or both.
 - **Platform integration.** Keychain password storage, an Aurora light theme, search, pull-to-refresh, and adaptive sheets.
 - **App Lock.** Optional Face ID or Touch ID (with device passcode fallback) when Mailr launches or returns to the foreground. Manage it under Settings → Privacy → App Lock.
 - **No third-party dependencies.** Only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, LocalAuthentication, Foundation, and SQLite3.
@@ -71,6 +74,26 @@ make app        # builds the .app bundle only
 ```
 
 The macOS app is built with Swift Package Manager and assembled into a proper `.app` by `Scripts/build-app.sh`. It shares `MailCore` and essentially all SwiftUI views with iOS.
+
+### Host archive (optional)
+
+`MailrServer` is a small server that runs on the host Mac and stores the mail the client retrieves. The macOS app starts it automatically on launch when the configured host is loopback. To run it independently — for example while using the iOS app or Simulator — start it in a separate terminal:
+
+```bash
+make server
+# or: swift run MailrServer
+```
+
+By default it listens on `http://127.0.0.1:8787` and keeps its database in `Application Support/Mailr/host-mail.sqlite3`. The macOS app and the iOS Simulator can both reach that loopback address. The client syncs every fetched message in the background; if the server is not running, mail still works normally and the reader simply reports the mailbox location. If a standalone server already owns the port, the macOS app silently leaves it in charge.
+
+To use the host archive from a physical iPhone, bind the server to your LAN and point the client at the Mac:
+
+```bash
+swift run MailrServer --host 0.0.0.0
+# then set MAILR_HOST_SERVER=http://192.168.1.20:8787 in .env
+```
+
+`MAILR_HOST_SERVER=off` disables host syncing. The server has no authentication and speaks plain HTTP, so keep it on loopback unless you understand the risk of exposing archived mail to your local network.
 
 ## Connecting a real account
 
@@ -140,13 +163,16 @@ Sources/
     MailService.swift       Service protocol, account store, Keychain store
     EnvironmentAccounts.swift .env parser and account importer
     MailDatabase.swift      Synchronous SQLite store for local mail data
+    HostMailStore.swift     Host archive configuration, wire types, HTTP client
+    HostMailServer.swift    Loopback HTTP server and request router
     DemoMailService.swift   Seeded offline mailbox
+  MailrServer/              Standalone host archive executable
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
     SidebarView.swift       Accounts, mailboxes, iPhone mailbox drawer
     MessageListView.swift   Message browser and rows
-    MessageDetailView.swift Reader, actions, attachment export
+    MessageDetailView.swift Reader, storage location, actions, attachment export
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)
     ComposeView.swift       Compose sheet and file importer
     SettingsView.swift      Account management and Privacy entry
@@ -156,7 +182,7 @@ Sources/
     SecuritySettingsView.swift App Lock setup page
     Theme.swift             Aurora light palette, surfaces, and brand components
     Platform.swift          iOS/macOS conditional helpers
-Tests/MailCoreTests/        Parser, builder, IMAP, and demo-service tests
+Tests/MailCoreTests/        Parser, builder, IMAP, database, host archive, and demo-service tests
 project.yml                 XcodeGen definition for the iOS app
 Support/Info.plist          macOS bundle metadata
 Support/Mailr.entitlements  iOS Keychain access group
@@ -167,7 +193,9 @@ website/                    Docusaurus documentation site (GitHub Pages)
 .github/workflows/          Docs deployment workflow
 ```
 
-`MailCore` has no UI dependencies and can be reused. The iOS target compiles it as an embedded framework; the macOS target consumes the same sources as the `MailCore` SwiftPM library.
+`MailCore` has no UI dependencies and can be reused. The iOS target compiles it as an embedded framework; the macOS target consumes the same sources as the `MailCore` SwiftPM library. `MailrServer` is a separate SwiftPM executable built from the same core.
+
+The client talks to the host archive through `HostMailStore` over HTTP/JSON. The server writes to its own `host-mail.sqlite3` so archived mail survives deletions in the mailbox and remains independent from the app's cache.
 
 ## Tests
 
@@ -185,9 +213,10 @@ The suite covers:
 - Account, mailbox, message, body, and attachment persistence in SQLite
 - Legacy `accounts.json` migration into SQLite
 - `.env` parsing, provider inference, multi-account merging, and validation
+- Host archive database syncing, storage flags, request routing, and an HTTP round trip
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 66 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
+All 74 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
 
 ### Debug UI previews
 
@@ -203,17 +232,19 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 ## Security and privacy
 
 - Passwords live in the **macOS/iOS Keychain**, keyed by account UUID. Account metadata, cached mailboxes, message summaries, bodies, and attachments are stored in a **SQLite database** in Application Support (`Mailr/mailr.sqlite3`). Existing `accounts.json` files are imported once and renamed.
+- The optional host archive stores retrieved mail in a second SQLite database (`Mailr/host-mail.sqlite3`). It listens on loopback only by default, has no authentication, and uses plain HTTP; do not bind it to a public interface. It is written with `0600` permissions and the containing directory with `0700`.
 - The optional development `.env` file is plain text on disk. Mailr reads it at launch, copies passwords to the Keychain, and never writes them into the SQLite account table. It is git-ignored; keep its permissions restricted (for example `chmod 600 .env`).
 - TLS is handled by **Network.framework** with the system trust store and a 30-second connect timeout. Credentials are only sent after the TLS connection is established, unless the user explicitly selects the insecure plaintext option.
 - The HTML reader disables JavaScript, uses a non-persistent web data store, injects a restrictive CSP, and blocks remote images by default to prevent tracking pixels.
 - **App Lock** is optional and off by default. Once enabled, authentication runs through **LocalAuthentication** (Face ID, Touch ID, or the device passcode). Mailr only receives success or failure; biometric data never leaves the device. With App Lock enabled, Mailr locks at launch and whenever it returns from the background; the preference is stored in `UserDefaults`.
-- There is no analytics, crash reporting, or remote logging.
+- There is no analytics, crash reporting, or remote logging. Mailr talks to your mail servers and, when enabled, the host archive on your own machine.
 
 ## Limitations / possible next steps
 
 - No OAuth sign-in (app passwords only).
 - No STARTTLS upgrade; direct TLS only.
 - No background push or scheduled sync. Mail refreshes on launch, when the app becomes active, on pull-to-refresh, and manually.
+- The host archive is optional, unauthenticated, and loopback-first. It is intended for a trusted personal machine, not as a shared mail server.
 - Dark mode is not implemented yet; the app is light-only for now.
 - Message lists fetch the newest 100 messages and search is local. There is no server-side search yet.
 - Compose does not autosave drafts, and there is no conversation/thread view or undo-delete.

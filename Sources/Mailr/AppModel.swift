@@ -51,6 +51,9 @@ final class AppModel {
     var currentMessage: MailMessage?
     var isLoadingBody = false
     var remoteContentAllowed = false
+    var currentStorage: MessageStorageStatus?
+    var hostArchiveHealth: HostMailHealth?
+    var isCheckingHostArchive = false
 
     // Compose & alerts
     var compose: ComposeDraft?
@@ -58,6 +61,8 @@ final class AppModel {
 
     @ObservationIgnored private let accountStore = AccountStore()
     @ObservationIgnored private let credentials = KeychainCredentialStore()
+    @ObservationIgnored private let hostConfiguration: HostMailConfiguration?
+    @ObservationIgnored private let hostStore: (any HostMailStore)?
     @ObservationIgnored private var services: [UUID: any MailService] = [:]
     @ObservationIgnored private var loadToken = UUID()
     @ObservationIgnored private var bodyToken = UUID()
@@ -72,6 +77,9 @@ final class AppModel {
     private(set) var hasLoadedInitialMail = false
 
     init() {
+        let configuration = HostMailConfiguration.load()
+        self.hostConfiguration = configuration
+        self.hostStore = configuration.map { HTTPHostMailStore(configuration: $0) }
         loadAccounts()
     }
 
@@ -115,6 +123,25 @@ final class AppModel {
 
     var currentAccountAddress: String {
         activeAccount?.emailAddress ?? ""
+    }
+
+    /// The host archive address, or `nil` when host syncing is disabled.
+    var hostArchiveAddress: String? {
+        hostConfiguration?.displayAddress
+    }
+
+    var isHostArchiveEnabled: Bool {
+        hostStore != nil
+    }
+
+    func refreshHostArchiveStatus() async {
+        guard let hostStore else {
+            hostArchiveHealth = nil
+            return
+        }
+        isCheckingHostArchive = true
+        hostArchiveHealth = try? await hostStore.health()
+        isCheckingHostArchive = false
     }
 
     // MARK: - Startup
@@ -271,6 +298,9 @@ final class AppModel {
             let service = try service(for: accountID)
             let boxes = try await service.listMailboxes()
             try? database.saveMailboxes(boxes, accountID: accountID)
+            if let hostStore {
+                try? await hostStore.saveMailboxes(boxes, accountID: accountID)
+            }
             guard let currentIndex = runtimes.firstIndex(where: { $0.id == accountID }) else { return }
             runtimes[currentIndex].mailboxes = boxes
             runtimes[currentIndex].error = nil
@@ -359,6 +389,7 @@ final class AppModel {
             messages = []
             selectedMessageID = nil
             currentMessage = nil
+            currentStorage = nil
             return
         }
 
@@ -369,30 +400,98 @@ final class AppModel {
         if !preserveSelection {
             selectedMessageID = nil
             currentMessage = nil
+            currentStorage = nil
             searchText = ""
         }
 
         // Show the cached list immediately, then replace it with the server's
         // response. Offline launches still have something to display.
+        var cachedHostOnly: [MessageSummary] = []
         if let cached = try? database.loadMessages(
             accountID: selection.accountID,
             mailbox: selection.mailboxPath,
             limit: 100
-        ), messages.isEmpty || !preserveSelection {
-            messages = cached
+        ) {
+            cachedHostOnly = cached.filter { !$0.isOnMailbox }
+            if messages.isEmpty || !preserveSelection {
+                messages = cached
+            }
         }
 
         do {
             let service = try service(for: selection.accountID)
             let fetched = try await service.fetchMessages(mailbox: selection.mailboxPath, limit: 100)
             guard token == loadToken else { return }
-            messages = fetched
+
+            var visible = fetched
+            for index in visible.indices {
+                visible[index].isOnMailbox = true
+            }
+
+            // Ask the host archive for everything it holds in this mailbox,
+            // then merge in mail that is no longer visible on the real IMAP
+            // server. The newest-window check avoids treating older archived
+            // messages as host-only just because the client only fetches 100.
+            var merged = visible
+            let visibleIDs = Set(visible.map(\.id))
+            var hostOnly: [MessageSummary] = []
+            if let hostStore {
+                let snapshot = try? await hostStore.mailboxSnapshot(
+                    accountID: selection.accountID,
+                    mailbox: selection.mailboxPath,
+                    limit: 300
+                )
+                let cutoff: Date
+                if visible.count >= 100, let oldest = visible.map(\.date).min() {
+                    cutoff = oldest
+                } else {
+                    cutoff = .distantPast
+                }
+
+                if let snapshot {
+                    hostOnly = snapshot
+                        .filter { !visibleIDs.contains($0.id) && $0.date >= cutoff }
+                        .map { message in
+                            var copy = message
+                            copy.isOnMailbox = false
+                            return copy
+                        }
+                    merged.append(contentsOf: hostOnly)
+                } else {
+                    // The archive is unreachable; keep host-only rows already
+                    // cached on this device so they do not disappear.
+                    merged.append(contentsOf: cachedHostOnly.filter { !visibleIDs.contains($0.id) })
+                }
+                merged.sort { $0.date > $1.date }
+
+                try? await hostStore.syncMailbox(
+                    accountID: selection.accountID,
+                    mailbox: selection.mailboxPath,
+                    messages: visible,
+                    absentUIDs: hostOnly.map(\.uid)
+                )
+            } else {
+                merged.append(contentsOf: cachedHostOnly.filter { !visibleIDs.contains($0.id) })
+                merged.sort { $0.date > $1.date }
+            }
+
+            guard token == loadToken else { return }
+            messages = merged
+
+            // The live mailbox snapshot replaces locally cached summaries.
+            // Host-only rows are preserved separately so they stay available
+            // while the archive is offline.
             try? database.replaceMessages(
-                fetched,
+                visible,
                 accountID: selection.accountID,
                 mailbox: selection.mailboxPath
             )
-            if preserveSelection, let id = selectedMessageID, !fetched.contains(where: { $0.id == id }) {
+            if !hostOnly.isEmpty {
+                try? database.upsertMessages(hostOnly, accountID: selection.accountID)
+            }
+
+            if preserveSelection, let id = selectedMessageID,
+               !merged.contains(where: { $0.id == id }) {
                 selectedMessageID = nil
                 currentMessage = nil
             }
@@ -408,6 +507,7 @@ final class AppModel {
 
     func selectionDidChange() async {
         currentMessage = nil
+        currentStorage = nil
         remoteContentAllowed = false
         await loadMessages()
     }
@@ -416,6 +516,7 @@ final class AppModel {
         guard let selection, let id = selectedMessageID,
               let summary = messages.first(where: { $0.id == id }) else {
             currentMessage = nil
+            currentStorage = nil
             return
         }
 
@@ -423,13 +524,41 @@ final class AppModel {
         bodyToken = token
         isLoadingBody = true
         remoteContentAllowed = false
+        currentStorage = MessageStorageStatus(
+            onMailbox: summary.isOnMailbox,
+            onHost: false,
+            onDevice: false
+        )
 
         do {
             let service = try service(for: selection.accountID)
-            let message = try await service.fetchMessage(mailbox: summary.mailbox, uid: summary.uid)
+            let fetchedMessage = try await service.fetchMessage(mailbox: summary.mailbox, uid: summary.uid)
             guard token == bodyToken, selectedMessageID == id else { return }
+
+            var message = fetchedMessage
+            message.summary.isOnMailbox = true
             try? database.saveMessage(message, accountID: selection.accountID)
+            updateSummary(id: id) { $0.isOnMailbox = true }
+
+            // Mirror the full message to the host archive. Failing to reach
+            // the archive must never make the mailbox unreadable.
+            var onHost = false
+            if let hostStore {
+                do {
+                    try await hostStore.storeMessage(message, accountID: selection.accountID)
+                    onHost = true
+                } catch {
+                    onHost = false
+                }
+            }
+
+            guard token == bodyToken, selectedMessageID == id else { return }
             currentMessage = message
+            currentStorage = MessageStorageStatus(
+                onMailbox: true,
+                onHost: onHost,
+                onDevice: true
+            )
             isLoadingBody = false
 
             if summary.isUnread {
@@ -437,19 +566,81 @@ final class AppModel {
             }
         } catch {
             guard token == bodyToken else { return }
-            isLoadingBody = false
 
-            let cached = (try? database.loadMessage(
-                accountID: selection.accountID,
-                mailbox: summary.mailbox,
-                uid: summary.uid
-            )) ?? nil
-            if let cached {
-                currentMessage = cached
+            // A connection or authentication failure leaves the mailbox state
+            // unknown; a command failure means the message is no longer there.
+            let mailboxStillHasMessage = self.mailboxStillHasMessage(after: error)
+
+            // Prefer the host archive, then the local cache.
+            var onHost = false
+            var loaded: MailMessage?
+            if let hostStore,
+               let hostMessage = try? await hostStore.storedMessage(
+                   accountID: selection.accountID,
+                   mailbox: summary.mailbox,
+                   uid: summary.uid
+               ) {
+                onHost = true
+                updateSummary(id: id) {
+                    $0.isOnMailbox = mailboxStillHasMessage ? summary.isOnMailbox : false
+                }
+
+                // The archive may only have the summary if the body was never
+                // downloaded. Fall through to the local cache in that case.
+                if hostMessage.text != nil
+                    || hostMessage.html != nil
+                    || !hostMessage.attachments.isEmpty {
+                    var copy = hostMessage
+                    copy.summary.isOnMailbox = mailboxStillHasMessage ? summary.isOnMailbox : false
+                    loaded = copy
+                }
+            }
+
+            guard token == bodyToken, selectedMessageID == id else { return }
+
+            if loaded == nil {
+                loaded = (try? database.loadMessage(
+                    accountID: selection.accountID,
+                    mailbox: summary.mailbox,
+                    uid: summary.uid
+                )) ?? nil
+            }
+
+            isLoadingBody = false
+            if var message = loaded {
+                if !mailboxStillHasMessage {
+                    message.summary.isOnMailbox = false
+                    updateSummary(id: id) { $0.isOnMailbox = false }
+                }
+                try? database.saveMessage(message, accountID: selection.accountID)
+                currentMessage = message
+                currentStorage = MessageStorageStatus(
+                    onMailbox: message.summary.isOnMailbox,
+                    onHost: onHost,
+                    onDevice: true
+                )
             } else {
+                currentStorage = MessageStorageStatus(
+                    onMailbox: mailboxStillHasMessage ? summary.isOnMailbox : false,
+                    onHost: false,
+                    onDevice: false
+                )
                 errorMessage = error.localizedDescription
                 currentMessage = MailMessage(summary: summary, text: nil, html: nil)
             }
+        }
+    }
+
+    /// Interprets a body-fetch failure for the storage badge. Transient
+    /// connection/auth problems leave the mailbox state unknown, while a
+    /// command failure means the message is gone from the mailbox.
+    private func mailboxStillHasMessage(after error: any Error) -> Bool {
+        guard let mailError = error as? MailError else { return true }
+        switch mailError {
+        case .connection, .protocolViolation, .authentication, .notConfigured, .unsupported:
+            return true
+        case .commandFailed, .invalidMessage:
+            return false
         }
     }
 
@@ -480,6 +671,16 @@ final class AppModel {
                     flags: [.flagged],
                     enabled: next
                 )
+                if let hostStore {
+                    try? await hostStore.updateFlags(
+                        accountID: accountID,
+                        mailbox: target.mailbox,
+                        uid: target.uid,
+                        isRead: nil,
+                        isFlagged: next,
+                        isAnswered: nil
+                    )
+                }
             } catch {
                 updateSummary(id: target.id) { $0.isFlagged = !next }
                 if currentMessage?.id == target.id {
@@ -491,6 +692,16 @@ final class AppModel {
                     uid: target.uid,
                     isFlagged: !next
                 )
+                if let hostStore {
+                    try? await hostStore.updateFlags(
+                        accountID: accountID,
+                        mailbox: target.mailbox,
+                        uid: target.uid,
+                        isRead: nil,
+                        isFlagged: !next,
+                        isAnswered: nil
+                    )
+                }
                 errorMessage = error.localizedDescription
             }
         }
@@ -542,6 +753,16 @@ final class AppModel {
                     flags: [.seen],
                     enabled: seen
                 )
+                if let hostStore {
+                    try? await hostStore.updateFlags(
+                        accountID: resolvedAccount,
+                        mailbox: message.mailbox,
+                        uid: message.uid,
+                        isRead: seen,
+                        isFlagged: nil,
+                        isAnswered: nil
+                    )
+                }
             } catch {
                 // Leave the optimistic state alone; a refresh will correct it.
             }
@@ -559,13 +780,24 @@ final class AppModel {
 
         Task {
             do {
-                let service = try service(for: accountID)
-                try await service.delete(mailbox: target.mailbox, uid: target.uid)
+                // Host-only messages no longer exist on the IMAP server, so
+                // only ask the mailbox to delete messages it still owns.
+                if target.isOnMailbox {
+                    let service = try service(for: accountID)
+                    try await service.delete(mailbox: target.mailbox, uid: target.uid)
+                }
                 try? database.deleteMessage(
                     accountID: accountID,
                     mailbox: target.mailbox,
                     uid: target.uid
                 )
+                if let hostStore {
+                    try? await hostStore.deleteMessage(
+                        accountID: accountID,
+                        mailbox: target.mailbox,
+                        uid: target.uid
+                    )
+                }
                 await loadMailboxes(for: accountID)
                 await loadMessages(preserveSelection: true)
                 if let nextSelection, messages.contains(where: { $0.id == nextSelection }) {

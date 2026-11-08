@@ -20,7 +20,10 @@ Sources/
     SocketConnection.swift  Async TLS byte stream on Network.framework
     MailService.swift       Service protocol, account store, Keychain store
     MailDatabase.swift      Synchronous SQLite store for local mail data
+    HostMailStore.swift     Host archive configuration, wire types, HTTP client
+    HostMailServer.swift    Loopback HTTP server and request router
     DemoMailService.swift   Seeded offline mailbox
+  MailrServer/              Standalone host archive executable
   Mailr/                    SwiftUI app
     AppModel.swift          MainActor observable state and actions
     RootView.swift          Adaptive iPhone / iPad+Mac shells
@@ -83,3 +86,6 @@ defence) and sent by `SMTPClient` using EHLO plus AUTH LOGIN or PLAIN.
 - Message lists show cached rows immediately, then refresh from the server. The
   cache keeps the newest 100 messages per mailbox.
 - The demo mailbox is seeded into the same database the first time it is opened.
+- The optional host archive runs as a separate loopback HTTP process and writes
+  to `Mailr/host-mail.sqlite3`. Messages carry an `on_mailbox` flag so the reader
+  can distinguish mailbox-only, host-only, and mirrored mail.

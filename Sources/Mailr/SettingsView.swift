@@ -35,6 +35,7 @@ struct SettingsView: View {
                     .listRowInsets(EdgeInsets())
 
                     privacySection
+                    hostArchiveSection
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -54,6 +55,7 @@ struct SettingsView: View {
                     }
 
                     privacySection
+                    hostArchiveSection
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -68,6 +70,7 @@ struct SettingsView: View {
         .background { MailrBackground() }
         .tint(MailrTheme.accent)
         .onAppear { lock.refreshBiometry() }
+        .task { await model.refreshHostArchiveStatus() }
         .sheet(item: $editingRequest) { request in
             AccountEditorView(account: request.account)
                 .environment(model)
@@ -197,6 +200,87 @@ struct SettingsView: View {
             MailrSectionLabel(text: "Privacy")
                 .padding(.leading, 4)
         }
+    }
+
+    private var hostArchiveSection: some View {
+        Section {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(
+                            model.hostArchiveHealth == nil
+                                ? AnyShapeStyle(MailrTheme.surfaceSoft)
+                                : AnyShapeStyle(MailrTheme.accentGradient)
+                        )
+                    Image(systemName: model.hostArchiveHealth == nil ? "externaldrive" : "externaldrive.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(
+                            model.hostArchiveHealth == nil ? MailrTheme.inkSecondary : Color.white
+                        )
+                }
+                .frame(width: 32, height: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Host archive")
+                        .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(MailrTheme.ink)
+
+                    if let address = model.hostArchiveAddress {
+                        Text(address)
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkTertiary)
+                            .lineLimit(1)
+                    } else {
+                        Text("Disabled with MAILR_HOST_SERVER=off")
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkTertiary)
+                    }
+
+                    if model.isHostArchiveEnabled {
+                        Text(hostArchiveDetail)
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkSecondary)
+                    }
+                }
+
+                Spacer()
+
+                if model.isHostArchiveEnabled {
+                    Text(model.hostArchiveHealth == nil ? "OFFLINE" : "ONLINE")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .tracking(1.2)
+                        .foregroundStyle(
+                            model.hostArchiveHealth == nil ? MailrTheme.amber : MailrTheme.accentDeep
+                        )
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(
+                            (model.hostArchiveHealth == nil ? MailrTheme.amber : MailrTheme.accent)
+                                .opacity(0.10),
+                            in: Capsule()
+                        )
+                }
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+            .mailrCard(radius: 16, shadowRadius: 8)
+            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 12, trailing: 12))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+        } header: {
+            MailrSectionLabel(text: "Storage")
+                .padding(.leading, 4)
+        }
+    }
+
+    private var hostArchiveDetail: String {
+        if model.isCheckingHostArchive {
+            return "Checking the host archive…"
+        }
+        if let health = model.hostArchiveHealth {
+            return "\(health.messageCount) messages stored on the host"
+        }
+        return "Not reachable — start it with make server"
     }
 
     private var securitySubtitle: String {

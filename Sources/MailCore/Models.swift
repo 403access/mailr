@@ -323,7 +323,7 @@ public enum MailboxRole: String, Codable, Hashable, Sendable, CaseIterable {
     }
 }
 
-public struct Mailbox: Identifiable, Hashable, Sendable {
+public struct Mailbox: Identifiable, Hashable, Sendable, Codable {
     /// The server-side path. Kept exactly as the server returned it.
     public var path: String
     /// A human readable name, decoded from IMAP modified UTF-7.
@@ -370,7 +370,7 @@ public enum MessageFlag: String, Sendable, CaseIterable {
     case draft = "\\Draft"
 }
 
-public struct MessageSummary: Identifiable, Hashable, Sendable {
+public struct MessageSummary: Identifiable, Hashable, Sendable, Codable {
     public var uid: UInt32
     public var mailbox: String
     public var subject: String
@@ -387,6 +387,10 @@ public struct MessageSummary: Identifiable, Hashable, Sendable {
     public var messageID: String?
     public var inReplyTo: String?
     public var references: [String]
+    /// Whether the message is currently present in the actual mailbox on the
+    /// IMAP server. Messages that only live in the host archive are marked
+    /// `false`.
+    public var isOnMailbox: Bool
 
     public init(
         uid: UInt32,
@@ -404,7 +408,8 @@ public struct MessageSummary: Identifiable, Hashable, Sendable {
         hasAttachments: Bool = false,
         messageID: String? = nil,
         inReplyTo: String? = nil,
-        references: [String] = []
+        references: [String] = [],
+        isOnMailbox: Bool = true
     ) {
         self.uid = uid
         self.mailbox = mailbox
@@ -422,6 +427,7 @@ public struct MessageSummary: Identifiable, Hashable, Sendable {
         self.messageID = messageID
         self.inReplyTo = inReplyTo
         self.references = references
+        self.isOnMailbox = isOnMailbox
     }
 
     public var id: String { "\(mailbox)#\(uid)" }
@@ -437,7 +443,7 @@ public struct MessageSummary: Identifiable, Hashable, Sendable {
     public var isUnread: Bool { !isRead }
 }
 
-public struct MailAttachment: Identifiable, Hashable, Sendable {
+public struct MailAttachment: Identifiable, Hashable, Sendable, Codable {
     public var id: UUID
     public var filename: String
     public var mimeType: String
@@ -472,7 +478,7 @@ public struct MailAttachment: Identifiable, Hashable, Sendable {
     }
 }
 
-public struct MailMessage: Identifiable, Hashable, Sendable {
+public struct MailMessage: Identifiable, Hashable, Sendable, Codable {
     public var summary: MessageSummary
     public var text: String?
     public var html: String?
@@ -491,6 +497,75 @@ public struct MailMessage: Identifiable, Hashable, Sendable {
     }
 
     public var id: String { summary.id }
+}
+
+// MARK: - Storage location
+
+/// Where a message is currently held.
+public enum MessagePlacement: String, Codable, Hashable, Sendable, CaseIterable {
+    /// Present in the actual IMAP mailbox, and not in the host archive.
+    case mailbox
+    /// Present in the host archive but no longer in the actual mailbox.
+    case host
+    /// Present in both the actual mailbox and the host archive.
+    case both
+    /// Only in this client's local database (for example while the host
+    /// archive is unreachable).
+    case device
+    /// The message could not be found anywhere.
+    case unknown
+
+    public var title: String {
+        switch self {
+        case .mailbox: "On mailbox"
+        case .host: "Only on host machine"
+        case .both: "Mailbox + host machine"
+        case .device: "Only on this device"
+        case .unknown: "Storage unknown"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .mailbox: "server.rack"
+        case .host: "externaldrive.fill"
+        case .both: "checkmark.circle.fill"
+        case .device: "internaldrive"
+        case .unknown: "questionmark.circle"
+        }
+    }
+}
+
+/// The result of looking for one message in the mailbox, the host archive, and
+/// the local client database.
+public struct MessageStorageStatus: Codable, Hashable, Sendable {
+    public var onMailbox: Bool
+    public var onHost: Bool
+    public var onDevice: Bool
+
+    public init(onMailbox: Bool, onHost: Bool, onDevice: Bool) {
+        self.onMailbox = onMailbox
+        self.onHost = onHost
+        self.onDevice = onDevice
+    }
+
+    public var placement: MessagePlacement {
+        switch (onMailbox, onHost, onDevice) {
+        case (true, true, _):
+            return .both
+        case (true, false, _):
+            return .mailbox
+        case (false, true, _):
+            return .host
+        case (false, false, true):
+            return .device
+        case (false, false, false):
+            return .unknown
+        }
+    }
+
+    public var title: String { placement.title }
+    public var symbolName: String { placement.symbolName }
 }
 
 public struct OutgoingAttachment: Sendable, Identifiable {

@@ -222,6 +222,10 @@ struct MessageReaderView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             recipientsLine
+
+            if let storage = model.currentStorage {
+                storageLine(storage)
+            }
         }
         .padding(16)
         .mailrCard(radius: 22, shadowRadius: 14)
@@ -244,6 +248,58 @@ struct MessageReaderView: View {
             .foregroundStyle(MailrTheme.inkTertiary)
             .lineLimit(2)
             .textSelection(.enabled)
+    }
+
+    private func storageLine(_ storage: MessageStorageStatus) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: storage.symbolName)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(storage.placement == .host ? MailrTheme.amber : MailrTheme.accent)
+
+            Text(storage.title)
+                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(MailrTheme.inkSecondary)
+
+            if storage.onHost, let address = model.hostArchiveAddress {
+                Text("· \(address)")
+                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    .foregroundStyle(MailrTheme.inkTertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 5)
+        .background(
+            (storage.placement == .host ? MailrTheme.amber : MailrTheme.accent).opacity(0.09),
+            in: Capsule()
+        )
+        .overlay {
+            Capsule()
+                .strokeBorder(
+                    (storage.placement == .host ? MailrTheme.amber : MailrTheme.accent).opacity(0.16),
+                    lineWidth: 1
+                )
+        }
+        .help(storageHelp(storage))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func storageHelp(_ storage: MessageStorageStatus) -> String {
+        let host = model.hostArchiveAddress ?? "the host archive"
+        switch storage.placement {
+        case .both:
+            return "This message is still on the IMAP server and is also saved in the host archive at \(host)."
+        case .mailbox:
+            return "This message is still on the IMAP server. The host archive does not have a copy."
+        case .host:
+            return "This message is no longer on the IMAP server. It is kept in the host archive at \(host)."
+        case .device:
+            return "This message is only in Mailr’s local cache on this device."
+        case .unknown:
+            return "Mailr could not determine where this message is stored."
+        }
     }
 
     private var remoteBanner: some View {

@@ -9,7 +9,8 @@ let package = Package(
     ],
     products: [
         .library(name: "MailCore", targets: ["MailCore"]),
-        .executable(name: "Mailr", targets: ["Mailr"])
+        .executable(name: "Mailr", targets: ["Mailr"]),
+        .executable(name: "MailrServer", targets: ["MailrServer"])
     ],
     targets: [
         .target(
@@ -22,6 +23,13 @@ let package = Package(
             name: "Mailr",
             dependencies: ["MailCore"],
             exclude: ["Assets.xcassets"],
+            swiftSettings: [
+                .enableUpcomingFeature("ExistentialAny")
+            ]
+        ),
+        .executableTarget(
+            name: "MailrServer",
+            dependencies: ["MailCore"],
             swiftSettings: [
                 .enableUpcomingFeature("ExistentialAny")
             ]

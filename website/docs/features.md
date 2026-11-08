@@ -23,6 +23,10 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
 - **Local cache.** The message list is shown from SQLite immediately, then
   refreshed from the server. The newest 100 messages per mailbox are cached;
   older mail is fetched again when it returns to the window.
+- **Host archive.** An optional server on your Mac mirrors every retrieved
+  message. Mail that later disappears from the IMAP mailbox stays readable, and
+  each opened message shows whether it is on the mailbox, only in the host
+  archive, or both.
 
 ## MIME
 
@@ -52,6 +56,10 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
 Accounts, mailboxes, message summaries, bodies, and attachments live in a single
 SQLite database in Application Support (`Mailr/mailr.sqlite3`). Cached mail is
 available offline and across launches.
+
+The optional host archive uses a second database (`Mailr/host-mail.sqlite3`) on
+the host machine. Start it with `make server`, or `swift run MailrServer`. The
+client syncs in the background and never depends on the archive being online.
 
 ## Demo mode
 

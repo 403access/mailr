@@ -21,6 +21,7 @@
 		45F4769DFFE58F94C44B4CF6 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876E4202A805A2FABD1D4325 /* SidebarView.swift */; };
 		4DACD6E4BE2EA4FF5E0FE099 /* MailCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC63D009D213837C63D4C43F /* MailCore.framework */; };
 		5BDFF83CC22004DFA242AB1C /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774150DAE1ABE36641853150 /* Platform.swift */; };
+		5CB15F787DD91E45C1BEDA28 /* HostMailStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7442199ACD39A141E67DD66 /* HostMailStore.swift */; };
 		5FCFEBB81247EC93D9E8CEDB /* MessageListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A6DBF269731B58670BCC9DE /* MessageListView.swift */; };
 		6FA1EF381CBCFC4DF800AFBC /* IMAPMailService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BA75A1ED25426AF679F6E96 /* IMAPMailService.swift */; };
 		71D8FED8912E34875DBEB8ED /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F19562D7018C7FA3D5FEE0A3 /* SettingsView.swift */; };
@@ -30,6 +31,7 @@
 		9CD511EDD22C39E3B399099D /* AppLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383E7ECECD240B9B1A3EEBC6 /* AppLock.swift */; };
 		A62616F1BE6CEE5F1476327A /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6EA55E651186A41AB8FB36D /* Models.swift */; };
 		B5BE982C7CC8BACAB4758DE7 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1B53D9BFB70D07B2FA4153 /* Components.swift */; };
+		BAE83955316C4192F898C91D /* HostMailServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BD38C06F2335FC61F107CC5 /* HostMailServer.swift */; };
 		C3787848644C20FDB3726A80 /* EnvironmentAccounts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 997C315F077EF053683E4B47 /* EnvironmentAccounts.swift */; };
 		D28B6A5BA882D311BDDE54D6 /* IMAPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27C2C86F500554041091874E /* IMAPClient.swift */; };
 		D54B91D9DEE661DC57B45895 /* SMTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 302B020F1D56307F7BD0106D /* SMTPClient.swift */; };
@@ -75,6 +77,7 @@
 		302B020F1D56307F7BD0106D /* SMTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SMTPClient.swift; sourceTree = "<group>"; };
 		32563F04E6956615A68024FE /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		383E7ECECD240B9B1A3EEBC6 /* AppLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLock.swift; sourceTree = "<group>"; };
+		3BD38C06F2335FC61F107CC5 /* HostMailServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMailServer.swift; sourceTree = "<group>"; };
 		493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IMAPSupport.swift; sourceTree = "<group>"; };
 		4E18ACBD9F74A6D607ED31DF /* DemoMailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoMailService.swift; sourceTree = "<group>"; };
 		52EA5C43174135F64DD28AEC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -95,6 +98,7 @@
 		CC70D28DEA54E65DB3E903F4 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		CC989D2AAE2E013B7B218EF1 /* MIMEParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIMEParser.swift; sourceTree = "<group>"; };
 		D1163AD5798F175E24B35701 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		E7442199ACD39A141E67DD66 /* HostMailStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMailStore.swift; sourceTree = "<group>"; };
 		EE1B53D9BFB70D07B2FA4153 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		F19562D7018C7FA3D5FEE0A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FCCE2BB7F84C6B8F6AC7F352 /* ComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeView.swift; sourceTree = "<group>"; };
@@ -117,6 +121,8 @@
 			children = (
 				4E18ACBD9F74A6D607ED31DF /* DemoMailService.swift */,
 				997C315F077EF053683E4B47 /* EnvironmentAccounts.swift */,
+				3BD38C06F2335FC61F107CC5 /* HostMailServer.swift */,
+				E7442199ACD39A141E67DD66 /* HostMailStore.swift */,
 				27C2C86F500554041091874E /* IMAPClient.swift */,
 				2BA75A1ED25426AF679F6E96 /* IMAPMailService.swift */,
 				493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */,
@@ -276,6 +282,8 @@
 			files = (
 				7867997B0DF8438A6E82D558 /* DemoMailService.swift in Sources */,
 				C3787848644C20FDB3726A80 /* EnvironmentAccounts.swift in Sources */,
+				BAE83955316C4192F898C91D /* HostMailServer.swift in Sources */,
+				5CB15F787DD91E45C1BEDA28 /* HostMailStore.swift in Sources */,
 				D28B6A5BA882D311BDDE54D6 /* IMAPClient.swift in Sources */,
 				6FA1EF381CBCFC4DF800AFBC /* IMAPMailService.swift in Sources */,
 				F3B9C29301E47563D080EC4E /* IMAPSupport.swift in Sources */,
@@ -423,14 +431,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = QML5B57EMH;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Mailr;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Mailr uses Face ID to keep your mail private.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = "Support/Info-iOS.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -510,14 +511,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = QML5B57EMH;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Mailr;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSFaceIDUsageDescription = "Mailr uses Face ID to keep your mail private.";
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = "Support/Info-iOS.plist";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

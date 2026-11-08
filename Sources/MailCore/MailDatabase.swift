@@ -64,6 +64,15 @@ public final class MailDatabase: @unchecked Sendable {
             .appendingPathComponent("mailr.sqlite3")
     }
 
+    /// The database used by the host archive server. It is deliberately
+    /// separate from the client cache so the server can keep mail the client
+    /// has since removed (or that the mailbox no longer exposes).
+    public static var hostURL: URL {
+        defaultURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("host-mail.sqlite3")
+    }
+
     // MARK: Opening
 
     private func withDatabase<T>(_ body: (OpaquePointer) throws -> T) throws -> T {
@@ -197,6 +206,7 @@ public final class MailDatabase: @unchecked Sendable {
             message_id TEXT,
             in_reply_to TEXT,
             references_json TEXT NOT NULL DEFAULT '[]',
+            on_mailbox INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (account_id, mailbox, uid)
         );
 
@@ -231,6 +241,7 @@ public final class MailDatabase: @unchecked Sendable {
         // The statements fail harmlessly when the columns already exist.
         try? execLocked("ALTER TABLE mailboxes ADD COLUMN unread_count INTEGER NOT NULL DEFAULT 0;")
         try? execLocked("ALTER TABLE mailboxes ADD COLUMN total_count INTEGER NOT NULL DEFAULT 0;")
+        try? execLocked("ALTER TABLE messages ADD COLUMN on_mailbox INTEGER NOT NULL DEFAULT 1;")
     }
 
     /// Imports the pre-SQLite `accounts.json` file once and renames it so it is
@@ -502,7 +513,7 @@ public final class MailDatabase: @unchecked Sendable {
             let statement = try prepare(database, """
             SELECT uid, mailbox, subject, from_json, to_json, cc_json, date, snippet,
                    size, is_read, is_flagged, is_answered, has_attachments,
-                   message_id, in_reply_to, references_json
+                   message_id, in_reply_to, references_json, on_mailbox
             FROM messages
             WHERE account_id = ? AND mailbox = ?
             ORDER BY date DESC
@@ -547,9 +558,11 @@ public final class MailDatabase: @unchecked Sendable {
                 let database = try handleLocked()
                 let statement: OpaquePointer
                 if messages.isEmpty {
+                    // Keep host-only rows: they are not part of the live
+                    // mailbox list, but the host archive may still hold them.
                     statement = try prepare(
                         database,
-                        "DELETE FROM messages WHERE account_id = ? AND mailbox = ?;"
+                        "DELETE FROM messages WHERE account_id = ? AND mailbox = ? AND on_mailbox = 1;"
                     )
                     bind(statement, 1, accountID.uuidString)
                     bind(statement, 2, mailbox)
@@ -557,7 +570,8 @@ public final class MailDatabase: @unchecked Sendable {
                     let placeholders = Array(repeating: "?", count: messages.count).joined(separator: ", ")
                     statement = try prepare(database, """
                     DELETE FROM messages
-                    WHERE account_id = ? AND mailbox = ? AND uid NOT IN (\(placeholders));
+                    WHERE account_id = ? AND mailbox = ? AND on_mailbox = 1
+                      AND uid NOT IN (\(placeholders));
                     """)
                     bind(statement, 1, accountID.uuidString)
                     bind(statement, 2, mailbox)
@@ -571,6 +585,115 @@ public final class MailDatabase: @unchecked Sendable {
                 // Bodies and attachments for removed summaries are no longer reachable.
                 try pruneChildrenLocked(accountID: accountID, mailbox: mailbox)
             }
+        }
+    }
+
+    /// Records a mailbox snapshot on the host archive.
+    ///
+    /// Messages in `messages` are known to be present in the actual mailbox.
+    /// UIDs in `absentUIDs` were previously archived but are no longer visible
+    /// in the mailbox window, so they become host-only. Summaries that are not
+    /// part of the snapshot are intentionally left untouched: the client only
+    /// fetches a window of the newest messages, and older archived mail must
+    /// not be treated as deleted just because it fell outside that window.
+    public func syncMailbox(
+        _ messages: [MessageSummary],
+        accountID: UUID,
+        mailbox: String,
+        absentUIDs: [UInt32] = []
+    ) throws {
+        try withDatabase { _ in
+            try transactionLocked {
+                for message in messages {
+                    var visible = message
+                    visible.isOnMailbox = true
+                    try upsertSummaryLocked(visible, accountID: accountID)
+                }
+
+                let database = try handleLocked()
+                for uid in absentUIDs {
+                    let statement = try prepare(database, """
+                    UPDATE messages SET on_mailbox = 0
+                    WHERE account_id = ? AND mailbox = ? AND uid = ?;
+                    """)
+                    bind(statement, 1, accountID.uuidString)
+                    bind(statement, 2, mailbox)
+                    sqlite3_bind_int64(statement, 3, Int64(uid))
+                    try run(statement)
+                    sqlite3_finalize(statement)
+                }
+            }
+        }
+    }
+
+    /// Marks one or more messages as present in, or absent from, the actual
+    /// mailbox without changing any other stored field.
+    public func markOnMailbox(
+        accountID: UUID,
+        mailbox: String,
+        uids: [UInt32],
+        onMailbox: Bool
+    ) throws {
+        guard !uids.isEmpty else { return }
+        try withDatabase { database in
+            try transactionLocked {
+                for uid in uids {
+                    let statement = try prepare(database, """
+                    UPDATE messages SET on_mailbox = ?
+                    WHERE account_id = ? AND mailbox = ? AND uid = ?;
+                    """)
+                    sqlite3_bind_int(statement, 1, onMailbox ? 1 : 0)
+                    bind(statement, 2, accountID.uuidString)
+                    bind(statement, 3, mailbox)
+                    sqlite3_bind_int64(statement, 4, Int64(uid))
+                    try run(statement)
+                    sqlite3_finalize(statement)
+                }
+            }
+        }
+    }
+
+    /// Whether the archive holds a summary for this message.
+    public func hasMessage(accountID: UUID, mailbox: String, uid: UInt32) throws -> Bool {
+        try withDatabase { database in
+            let statement = try prepare(database, """
+            SELECT 1 FROM messages
+            WHERE account_id = ? AND mailbox = ? AND uid = ?
+            LIMIT 1;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, mailbox)
+            sqlite3_bind_int64(statement, 3, Int64(uid))
+            return try step(statement)
+        }
+    }
+
+    /// The stored mailbox-presence flag, or `nil` when the message is unknown.
+    public func isOnMailbox(accountID: UUID, mailbox: String, uid: UInt32) throws -> Bool? {
+        try withDatabase { database in
+            let statement = try prepare(database, """
+            SELECT on_mailbox FROM messages
+            WHERE account_id = ? AND mailbox = ? AND uid = ?
+            LIMIT 1;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, mailbox)
+            sqlite3_bind_int64(statement, 3, Int64(uid))
+            guard try step(statement) else { return nil }
+            return sqlite3_column_int(statement, 0) != 0
+        }
+    }
+
+    /// Total number of archived message summaries (used by the host server's
+    /// health endpoint).
+    public func messageCount() throws -> Int {
+        try withDatabase { database in
+            let statement = try prepare(database, "SELECT COUNT(*) FROM messages;")
+            defer { sqlite3_finalize(statement) }
+            guard try step(statement) else { return 0 }
+            return Int(sqlite3_column_int64(statement, 0))
         }
     }
 
@@ -598,8 +721,8 @@ public final class MailDatabase: @unchecked Sendable {
         INSERT INTO messages (
             account_id, mailbox, uid, subject, from_json, to_json, cc_json, date,
             snippet, size, is_read, is_flagged, is_answered, has_attachments,
-            message_id, in_reply_to, references_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            message_id, in_reply_to, references_json, on_mailbox
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
             subject = excluded.subject,
             from_json = excluded.from_json,
@@ -614,7 +737,8 @@ public final class MailDatabase: @unchecked Sendable {
             has_attachments = excluded.has_attachments,
             message_id = excluded.message_id,
             in_reply_to = excluded.in_reply_to,
-            references_json = excluded.references_json;
+            references_json = excluded.references_json,
+            on_mailbox = excluded.on_mailbox;
         """)
         defer { sqlite3_finalize(statement) }
 
@@ -635,6 +759,7 @@ public final class MailDatabase: @unchecked Sendable {
         bind(statement, 15, message.messageID)
         bind(statement, 16, message.inReplyTo)
         bind(statement, 17, try encode(message.references))
+        sqlite3_bind_int(statement, 18, message.isOnMailbox ? 1 : 0)
         try run(statement)
     }
 
@@ -701,7 +826,7 @@ public final class MailDatabase: @unchecked Sendable {
             let statement = try prepare(database, """
             SELECT uid, mailbox, subject, from_json, to_json, cc_json, date, snippet,
                    size, is_read, is_flagged, is_answered, has_attachments,
-                   message_id, in_reply_to, references_json
+                   message_id, in_reply_to, references_json, on_mailbox
             FROM messages
             WHERE account_id = ? AND mailbox = ? AND uid = ?
             LIMIT 1;
@@ -805,7 +930,7 @@ public final class MailDatabase: @unchecked Sendable {
                 let fetch = try prepare(database, """
                 SELECT uid, mailbox, subject, from_json, to_json, cc_json, date, snippet,
                        size, is_read, is_flagged, is_answered, has_attachments,
-                       message_id, in_reply_to, references_json
+                       message_id, in_reply_to, references_json, on_mailbox
                 FROM messages
                 WHERE account_id = ? AND mailbox = ? AND uid = ?
                 LIMIT 1;
@@ -969,7 +1094,8 @@ public final class MailDatabase: @unchecked Sendable {
             hasAttachments: sqlite3_column_int(statement, 12) != 0,
             messageID: text(statement, 13),
             inReplyTo: text(statement, 14),
-            references: (try? decode([String].self, text(statement, 15))) ?? []
+            references: (try? decode([String].self, text(statement, 15))) ?? [],
+            isOnMailbox: sqlite3_column_int(statement, 16) != 0
         )
     }
 

@@ -5,7 +5,7 @@ SIM ?= iPhone 16 Pro
 TEAM ?= QML5B57EMH
 DEVICE ?= 00008101-001971222298001E
 
-.PHONY: build app run test ios-project ios-build ios-run device-build device-install docs docs-build clean
+.PHONY: build app run server test ios-project ios-build ios-run device-build device-install docs docs-build clean
 
 build:
 	swift build
@@ -15,6 +15,9 @@ app:
 
 run: app
 	open build/Mailr.app
+
+server:
+	swift run MailrServer
 
 test:
 	swift test

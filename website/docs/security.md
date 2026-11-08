@@ -16,6 +16,10 @@ description: How Mailr protects credentials, message rendering, and your data.
   imported once and renamed.
 - The database is not separately encrypted by Mailr; it relies on the app
   sandbox and the operating system's device encryption.
+- The optional host archive stores retrieved mail in a second SQLite database
+  (`Mailr/host-mail.sqlite3`) with `0600` permissions. It listens on loopback by
+  default, has no authentication, and speaks plain HTTP. Do not expose it to an
+  untrusted network.
 - Credentials are only sent after the TLS connection is established, unless the
   user explicitly selects the insecure plaintext option.
 - The optional development `.env` file is plain text on disk. Mailr reads it at
@@ -57,7 +61,8 @@ The HTML reader:
 ## Data collection
 
 There is **no analytics, crash reporting, or remote logging**. Mailr talks to
-your IMAP and SMTP servers and nowhere else.
+your IMAP and SMTP servers and, when enabled, the host archive on your own
+machine and nowhere else.
 
 ## What Mailr does not protect against
 

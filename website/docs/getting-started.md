@@ -55,6 +55,18 @@ The macOS app is built with Swift Package Manager and assembled into a proper
 `.app` by `Scripts/build-app.sh`. It shares `MailCore` and essentially all
 SwiftUI views with iOS.
 
+## Host archive (optional)
+
+```bash
+make server     # loopback on 127.0.0.1:8787
+```
+
+The host archive stores the mail the client retrieves and keeps it available
+after it leaves the IMAP mailbox. The macOS app starts it automatically on
+launch; run `make server` when using the iOS app or Simulator without the Mac
+app. For a physical iPhone, run `swift run MailrServer --host 0.0.0.0` and set
+`MAILR_HOST_SERVER=http://<Mac-LAN-IP>:8787` in `.env`.
+
 ## Simulator shortcuts
 
 Debug builds understand a `MAILR_UI_PREVIEW` environment variable so screenshots
