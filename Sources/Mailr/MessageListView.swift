@@ -21,7 +21,6 @@ struct MessageListView: View {
 
             content
         }
-        .background { MailrBackground() }
         .navigationTitle("")
         .mailrInlineNavigationTitle()
         .toolbar {
@@ -323,7 +322,6 @@ struct MessageRow: View {
                     .padding(.leading, 1)
             }
         }
-        .shadow(color: MailrTheme.shadow, radius: 9, x: 0, y: 4)
         .contentShape(Rectangle())
     }
 

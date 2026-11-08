@@ -71,49 +71,85 @@ enum MailrTheme {
 
 struct MailrBackground: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [MailrTheme.baseTop, MailrTheme.baseBottom],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+        // Drawn in a single `Canvas` pass. The previous version used several
+        // full-screen blurred circles plus a `.softLight` overlay; that forced
+        // an offscreen Gaussian blur + blend of the whole window whenever any
+        // view re-rendered, which made every interaction feel laggy. Radial
+        // gradients already fade smoothly, so the blur was purely cosmetic.
+        Canvas { context, size in
+            let bounds = CGRect(origin: .zero, size: size)
 
-            GeometryReader { proxy in
-                let longest = max(proxy.size.width, proxy.size.height)
-                ZStack {
-                    glow(MailrTheme.violet, opacity: 0.26, diameter: longest * 0.78)
-                        .offset(x: -proxy.size.width * 0.34, y: -proxy.size.height * 0.36)
-
-                    glow(MailrTheme.cyan, opacity: 0.18, diameter: longest * 0.66)
-                        .offset(x: proxy.size.width * 0.38, y: proxy.size.height * 0.12)
-
-                    glow(MailrTheme.mint, opacity: 0.12, diameter: longest * 0.58)
-                        .offset(x: proxy.size.width * 0.10, y: proxy.size.height * 0.48)
-                }
-                .blur(radius: 46)
-            }
-
-            LinearGradient(
-                colors: [Color.white.opacity(0.38), .clear, Color.white.opacity(0.20)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .blendMode(.softLight)
-        }
-        .ignoresSafeArea()
-    }
-
-    private func glow(_ color: Color, opacity: Double, diameter: CGFloat) -> some View {
-        Circle()
-            .fill(
-                RadialGradient(
-                    colors: [color.opacity(opacity), color.opacity(0)],
-                    center: .center,
-                    startRadius: 0,
-                    endRadius: diameter * 0.5
+            context.fill(
+                Path(bounds),
+                with: .linearGradient(
+                    Gradient(colors: [MailrTheme.baseTop, MailrTheme.baseBottom]),
+                    startPoint: .zero,
+                    endPoint: CGPoint(x: size.width, y: size.height)
                 )
             )
-            .frame(width: diameter, height: diameter)
+
+            let longest = max(size.width, size.height)
+            glow(
+                in: &context,
+                color: MailrTheme.violet,
+                opacity: 0.26,
+                diameter: longest * 0.78,
+                center: CGPoint(x: size.width * 0.16, y: size.height * 0.14)
+            )
+            glow(
+                in: &context,
+                color: MailrTheme.cyan,
+                opacity: 0.18,
+                diameter: longest * 0.66,
+                center: CGPoint(x: size.width * 0.88, y: size.height * 0.62)
+            )
+            glow(
+                in: &context,
+                color: MailrTheme.mint,
+                opacity: 0.12,
+                diameter: longest * 0.58,
+                center: CGPoint(x: size.width * 0.60, y: size.height * 0.98)
+            )
+
+            // Soft top-left highlight, kept as a plain gradient instead of a
+            // full-screen blend mode.
+            context.fill(
+                Path(bounds),
+                with: .linearGradient(
+                    Gradient(colors: [Color.white.opacity(0.18), .clear, Color.white.opacity(0.10)]),
+                    startPoint: .zero,
+                    endPoint: CGPoint(x: size.width, y: size.height)
+                )
+            )
+        }
+        .background(MailrTheme.baseBottom)
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
+    }
+
+    private func glow(
+        in context: inout GraphicsContext,
+        color: Color,
+        opacity: Double,
+        diameter: CGFloat,
+        center: CGPoint
+    ) {
+        let radius = diameter * 0.5
+        let rect = CGRect(
+            x: center.x - radius,
+            y: center.y - radius,
+            width: diameter,
+            height: diameter
+        )
+        context.fill(
+            Path(ellipseIn: rect),
+            with: .radialGradient(
+                Gradient(colors: [color.opacity(opacity), color.opacity(0)]),
+                center: center,
+                startRadius: 0,
+                endRadius: radius
+            )
+        )
     }
 }
 

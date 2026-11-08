@@ -68,7 +68,6 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        .background { MailrBackground() }
         .navigationTitle("")
         .safeAreaInset(edge: .bottom, spacing: 0) {
             sidebarFooter
@@ -364,11 +363,6 @@ struct MailboxRow: View {
                     .foregroundStyle(iconIsProminent ? Color.white : MailrTheme.inkSecondary)
             }
             .frame(width: 26, height: 26)
-            .shadow(
-                color: iconIsProminent ? MailrTheme.accent.opacity(0.22) : .clear,
-                radius: 6,
-                y: 2
-            )
 
             Text(mailbox.name)
                 .font(.system(

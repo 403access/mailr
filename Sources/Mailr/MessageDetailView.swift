@@ -49,7 +49,6 @@ struct MessageDetailView: View {
         }
         .navigationTitle("")
         .mailrInlineNavigationTitle()
-        .background { MailrBackground() }
         .toolbar {
             if let summary = model.currentMessage?.summary ?? model.selectedSummary {
                 #if os(iOS)
@@ -173,7 +172,6 @@ struct MessageReaderView: View {
                 attachmentBar
             }
         }
-        .background { MailrBackground() }
         .fileExporter(
             isPresented: $isExporting,
             document: exportDocument,

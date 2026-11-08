@@ -9,8 +9,6 @@ struct LockScreenView: View {
 
     var body: some View {
         ZStack {
-            MailrBackground()
-
             ForEach(0..<3, id: \.self) { index in
                 Circle()
                     .strokeBorder(

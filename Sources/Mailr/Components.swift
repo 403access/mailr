@@ -45,13 +45,12 @@ struct AvatarView: View {
             Circle()
                 .fill(
                     RadialGradient(
-                        colors: [Color.white.opacity(0.40), .clear],
+                        colors: [Color.white.opacity(0.24), .clear],
                         center: .topLeading,
                         startRadius: 0,
                         endRadius: size * 0.72
                     )
                 )
-                .blendMode(.softLight)
 
             Text(initials)
                 .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
@@ -61,7 +60,6 @@ struct AvatarView: View {
         .overlay {
             Circle().strokeBorder(Color.white.opacity(0.55), lineWidth: 1)
         }
-        .shadow(color: color.opacity(0.24), radius: size * 0.24, y: size * 0.10)
         .accessibilityLabel(Text(name.isEmpty ? address : name))
     }
 }
@@ -99,7 +97,6 @@ struct UnreadDot: View {
         Circle()
             .fill(MailrTheme.accentGradient)
             .frame(width: 7, height: 7)
-            .shadow(color: MailrTheme.accent.opacity(0.35), radius: 4)
             .accessibilityLabel("Unread")
     }
 }
