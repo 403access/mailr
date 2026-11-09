@@ -40,9 +40,10 @@ make docs-build  # production build
 - **Demo mode.** A seeded offline mailbox with attachments, HTML mail, drafts, and sent mail. Demo changes are stored in SQLite and survive relaunches.
 - **Synchronous local storage.** Accounts, mailboxes, message summaries, bodies, and attachments live in a single SQLite database, so cached mail is available offline and across launches.
 - **Host server.** The Mac owns the IMAP connections: it downloads mail into its own SQLite store without deleting anything from the origin server, and clients sync accounts, mailboxes, messages, flags, and sends through it. Each opened message shows its storage location: on the mailbox, only on the host machine, or both.
+- **Local email tags.** The host can classify mail with a small Ollama model on the same Mac, apply editable tags, and share those tags with every client. A deterministic keyword matcher keeps tagging useful when Ollama is not running, and you can always add or remove a tag by hand. Tag chips appear in message rows and the reader, with a one-click tag filter.
 - **Platform integration.** Keychain password storage, an Aurora light theme, search, pull-to-refresh, and adaptive sheets.
 - **App Lock.** Optional Face ID or Touch ID (with device passcode fallback) when Mailr launches or returns to the foreground. Manage it under Settings → Privacy → App Lock.
-- **No third-party dependencies.** Only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, LocalAuthentication, Foundation, and SQLite3.
+- **No third-party dependencies.** The app links only Apple frameworks and the system SQLite library: SwiftUI, WebKit, Network, Security, LocalAuthentication, Foundation, and SQLite3. The optional tag classifier talks to a separately installed local Ollama process; Mailr itself still links no third-party code.
 
 ## Quick start
 
@@ -148,6 +149,29 @@ The background sync refreshes the Inbox every five minutes (`MAILR_HOST_SYNC_INT
 
 `MAILR_HOST_SERVER=off` disables host syncing. The server has no authentication and speaks plain HTTP, so keep it on a trusted local network unless you understand the risk of exposing archived mail.
 
+### Email tags (local classifier)
+
+Tags are owned by the host server, so they are the same on the Mac, iPhone, and iPad. The host uses a small model served by [Ollama](https://ollama.com) over loopback:
+
+```bash
+# One-time: install a small model (about 1 GB)
+ollama pull qwen2.5:1.5b
+# On very constrained machines, qwen2.5:0.5b is smaller but less accurate.
+# ollama pull qwen2.5:0.5b
+
+# Keep Ollama running on the host Mac
+ollama serve
+
+# Restart the host server after changing .env
+make host-install
+```
+
+Mailr classifies the newest messages after each mailbox sync and records the result in `host-mail.sqlite3`. Open **Settings → Classification → Tags & Classification** to edit tag names, descriptions, and keywords, check the model status, or force a reclassification of the current mailbox. The starter set is **Action Required**, **Newsletter**, **Receipt/Invoice**, **Notification**, **Personal**, and **Work**; every tag can be renamed, disabled, or deleted.
+
+If Ollama is unreachable or the model is missing, classification falls back to a keyword matcher, so tags still appear without any network service. With `MAILR_CLASSIFY=off`, automatic classification is disabled and only manual tagging is available. The classifier reads messages from the host database and talks only to `MAILR_OLLAMA_URL`, which defaults to `http://127.0.0.1:11434`; email text is not sent to a cloud service.
+
+Classification is deliberately sequential (one message at a time) to keep memory use predictable on small machines. `MAILR_CLASSIFY_LIMIT` controls how many messages are classified per sync (default 10), and `MAILR_TAG_CONFIDENCE` / `MAILR_TAG_MAX` control the confidence threshold and maximum number of tags per message.
+
 ## Connecting a real account
 
 1. Open the ellipsis menu on iPhone (or Settings on Mac).
@@ -226,6 +250,7 @@ Sources/
     HostMailServer.swift    HTTP server, router, and async action bridge
     HostMailSync.swift      Host-side IMAP downloader and origin proxy
     HostMailService.swift   Client MailService backed by the host HTTP API
+    Tagging.swift           Editable tags, Ollama classifier, keyword fallback
     DemoMailService.swift   Seeded offline mailbox
   MailrServer/              Standalone host server executable
   MailrImport/              mailr-import command-line tool
@@ -234,8 +259,9 @@ Sources/
     RootView.swift          Adaptive iPhone / iPad+Mac shells
     SidebarView.swift       Accounts, mailboxes, iPhone mailbox drawer
     OverviewView.swift      Stats dashboard across all accounts and mailboxes
-    MessageListView.swift   Message browser and rows
-    MessageDetailView.swift Reader, storage location, actions, attachment export
+    MessageListView.swift   Message browser, tag filter, rows
+    MessageDetailView.swift Reader, storage location, tags, actions, attachment export
+    TagViews.swift          Tag chips, picker, filter bar, and tag editor
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)
     ComposeView.swift       Compose sheet and file importer
     SettingsView.swift      Account management and Privacy entry
@@ -279,9 +305,10 @@ The suite covers:
 - Thunderbird profiles.ini/prefs.js parsing, IMAP/SMTP mapping, mbox and Maildir import
 - NSS credential matching, host credential-file permissions, and dry-run behaviour
 - Host server database sync, account/mailbox/message routes, action proxying, and HTTP round trips
+- Tag persistence, manual overrides, classification state, tag HTTP routes, Ollama JSON parsing, and keyword fallback
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 101 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
+All 111 tests pass on macOS. The iOS app itself is verified by building and launching in the simulator.
 
 ### Debug UI previews
 
@@ -301,6 +328,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 - The optional development `.env` file is plain text on disk. Mailr reads it at launch, copies passwords to the Keychain, and never writes them into the SQLite account table. It is git-ignored; keep its permissions restricted (for example `chmod 600 .env`).
 - TLS is handled by **Network.framework** with the system trust store and a 30-second connect timeout. Credentials are only sent after the TLS connection is established, unless the user explicitly selects the insecure plaintext option.
 - The HTML reader disables JavaScript, uses a non-persistent web data store, injects a restrictive CSP, and blocks remote images by default to prevent tracking pixels.
+- Tag definitions and assignments live in the host SQLite database so they stay on your own machines. Classification prompts are sent only to the Ollama URL configured on the host (loopback by default). If you point `MAILR_OLLAMA_URL` at a remote server, email text will leave the host; leave it on `127.0.0.1` to keep classification local.
 - **App Lock** is optional and off by default. Once enabled, authentication runs through **LocalAuthentication** (Face ID, Touch ID, or the device passcode). Mailr only receives success or failure; biometric data never leaves the device. With App Lock enabled, Mailr locks at launch and whenever it returns from the background; the preference is stored in `UserDefaults`.
 - There is no analytics, crash reporting, or remote logging. The host server talks to your mail servers; clients talk only to the host server on your own network when host mode is enabled.
 
@@ -314,6 +342,7 @@ Modes: `inbox`, `drawer`, `message`, `attachment`, `compose`, `settings`, `secur
 - Clients need the host server for new IMAP mail. Cached mail remains readable offline, but the host must be reachable to refresh or send.
 - Dark mode is not implemented yet; the app is light-only for now.
 - Message lists fetch the newest 100 messages and search is local. There is no server-side search yet.
+- Tagging requires host mode. Classification quality depends on the local model; `qwen2.5:1.5b` is a good low-resource default, while `qwen2.5:0.5b` is lighter but substantially less accurate. Keyword fallback is intentionally simple, and there is no per-user training or feedback loop yet.
 - Compose does not autosave drafts, and there is no conversation/thread view or undo-delete.
 - Attachments are downloaded on demand from the full message body; there is no BODYSTRUCTURE-based lazy attachment fetching.
 - The local cache stores the newest 100 messages per mailbox; older mail is fetched from the server when it returns to the window.

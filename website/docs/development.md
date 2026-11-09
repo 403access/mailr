@@ -24,9 +24,10 @@ The suite covers:
 - `.env` parsing, provider inference, multi-account merging, and validation
 - Thunderbird profiles.ini/prefs.js parsing, IMAP/SMTP mapping, mbox and Maildir import
 - Host archive database syncing, storage flags, request routing, and an HTTP round trip
+- Tag persistence, manual overrides, classification state, tag routes, Ollama JSON parsing, and keyword fallback
 - Demo mailbox reads, flags, send, move-to-Trash, and relaunch persistence
 
-All 101 tests pass on macOS. The iOS app itself is verified by building and
+All 111 tests pass on macOS. The iOS app itself is verified by building and
 launching in the simulator.
 
 The Thunderbird importer is a separate SwiftPM executable:
@@ -50,6 +51,17 @@ release binary, copies `.env` to Application Support, and starts the
 `app.mailr.host-archive` LoginAgent on `0.0.0.0:8788`. Point clients at
 `MAILR_HOST_SERVER=http://<Mac-LAN-IP>:8788`. Set `MAILR_HOST_SERVER=off` to
 disable host mode.
+
+Host-side tagging uses a local Ollama model. Pull one before starting the
+server, then override the model with `MAILR_OLLAMA_MODEL` if needed:
+
+```bash
+ollama pull qwen2.5:1.5b
+ollama serve
+```
+
+`MAILR_CLASSIFY=off` disables automatic classification. `MAILR_CLASSIFY_LIMIT`,
+`MAILR_TAG_CONFIDENCE`, and `MAILR_TAG_MAX` tune batch size and thresholds.
 
 ## Local accounts from .env
 

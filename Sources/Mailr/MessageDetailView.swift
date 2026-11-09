@@ -59,6 +59,8 @@ struct MessageDetailView: View {
                         Label("Reply", systemImage: "arrowshape.turn.up.left")
                     }
 
+                    TagPickerMenu(message: summary)
+
                     Menu {
                         Button {
                             model.toggleFlag(summary)
@@ -105,6 +107,9 @@ struct MessageDetailView: View {
                         )
                     }
                     .mailrHelp(summary.isFlagged ? "Remove Flag" : "Flag")
+
+                    TagPickerMenu(message: summary)
+                        .mailrHelp("Tags")
 
                     Button {
                         model.markUnread(summary)
@@ -220,6 +225,16 @@ struct MessageReaderView: View {
                 .foregroundStyle(MailrTheme.inkGradient)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
+
+            let messageTags = model.tags(for: message.summary)
+            if !messageTags.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(messageTags) { tag in
+                        TagChip(tag: tag, compact: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
 
             recipientsLine
 

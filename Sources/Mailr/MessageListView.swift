@@ -15,6 +15,9 @@ struct MessageListView: View {
 
         VStack(spacing: 0) {
             header
+            if model.isHostMode, !model.tags.isEmpty {
+                TagFilterBar()
+            }
             Rectangle()
                 .fill(MailrTheme.hairline)
                 .frame(height: 1)
@@ -184,12 +187,27 @@ struct MessageListView: View {
                 MessageRow(
                     message: message,
                     showsRecipient: showsRecipient,
-                    isSelected: model.selectedMessageID == message.id
+                    isSelected: model.selectedMessageID == message.id,
+                    tags: model.tags(for: message)
                 )
                 .tag(message.id)
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
+                .contextMenu {
+                    ForEach(model.enabledTags) { tag in
+                        Button {
+                            Task { await model.toggleTag(tag, on: message) }
+                        } label: {
+                            Label(
+                                tag.name,
+                                systemImage: model.hasTag(tag, on: message)
+                                    ? "checkmark.circle.fill"
+                                    : tag.symbolName
+                            )
+                        }
+                    }
+                }
             }
         }
         .listStyle(.plain)
@@ -206,10 +224,25 @@ struct MessageListView: View {
                     NavigationLink(value: MessageRoute(messageID: message.id)) {
                         MessageRow(
                             message: message,
-                            showsRecipient: showsRecipient
+                            showsRecipient: showsRecipient,
+                            tags: model.tags(for: message)
                         )
                     }
                     .buttonStyle(.plain)
+                    .contextMenu {
+                        ForEach(model.enabledTags) { tag in
+                            Button {
+                                Task { await model.toggleTag(tag, on: message) }
+                            } label: {
+                                Label(
+                                    tag.name,
+                                    systemImage: model.hasTag(tag, on: message)
+                                        ? "checkmark.circle.fill"
+                                        : tag.symbolName
+                                )
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 12)
@@ -231,6 +264,7 @@ struct MessageRow: View {
     let message: MessageSummary
     var showsRecipient: Bool = false
     var isSelected: Bool = false
+    var tags: [MailTag] = []
 
     var body: some View {
         HStack(alignment: .top, spacing: 11) {
@@ -297,6 +331,20 @@ struct MessageRow: View {
                     ))
                     .foregroundStyle(message.isUnread ? MailrTheme.ink : MailrTheme.inkSecondary)
                     .lineLimit(1)
+
+                if !tags.isEmpty {
+                    HStack(spacing: 5) {
+                        ForEach(tags.prefix(3)) { tag in
+                            TagChip(tag: tag, compact: true)
+                        }
+                        if tags.count > 3 {
+                            Text("+\(tags.count - 3)")
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundStyle(MailrTheme.inkTertiary)
+                        }
+                    }
+                    .padding(.top, 1)
+                }
 
                 if !message.snippet.isEmpty {
                     Text(message.snippet)

@@ -23,6 +23,7 @@
 		45F4769DFFE58F94C44B4CF6 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 876E4202A805A2FABD1D4325 /* SidebarView.swift */; };
 		4DACD6E4BE2EA4FF5E0FE099 /* MailCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AC63D009D213837C63D4C43F /* MailCore.framework */; };
 		520E8B2B4BDF9B2B509B97B7 /* HostMailSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA49518C63F83681AC93BB1 /* HostMailSync.swift */; };
+		5552A45D1E0C933F019644D0 /* Tagging.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE737F8CBD36B020A534D541 /* Tagging.swift */; };
 		57F1B6AF67BF97A8F254F021 /* OverviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8CE4518E1D5D884A85D365 /* OverviewView.swift */; };
 		5BDFF83CC22004DFA242AB1C /* Platform.swift in Sources */ = {isa = PBXBuildFile; fileRef = 774150DAE1ABE36641853150 /* Platform.swift */; };
 		5CB15F787DD91E45C1BEDA28 /* HostMailStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7442199ACD39A141E67DD66 /* HostMailStore.swift */; };
@@ -52,6 +53,7 @@
 		ECB5B56F9F9A07488A9722AD /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52EA5C43174135F64DD28AEC /* Theme.swift */; };
 		F3937A7CD8668A4F73BBDC31 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32563F04E6956615A68024FE /* AppModel.swift */; };
 		F3B9C29301E47563D080EC4E /* IMAPSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493BECB8BEE6D1CF0FE5493E /* IMAPSupport.swift */; };
+		F52DA99C9ECBB0BDF16623CB /* TagViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA2A8475147A8905AF06F510 /* TagViews.swift */; };
 		F6F4C81E0C0E216683CBDCAF /* HostCredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF1ACA508152C6CC3EE3A63B /* HostCredentialStore.swift */; };
 		FB7CF9BFBAFB59E41323D5E6 /* ThunderbirdCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715C16146AC39E715B27C982 /* ThunderbirdCredentials.swift */; };
 /* End PBXBuildFile section */
@@ -117,10 +119,12 @@
 		C12BF6D378E604A5CD423D26 /* MessageBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBuilder.swift; sourceTree = "<group>"; };
 		C5E3062BF64301E4E5B7B4B6 /* SecuritySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecuritySettingsView.swift; sourceTree = "<group>"; };
 		C6EA55E651186A41AB8FB36D /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		CA2A8475147A8905AF06F510 /* TagViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagViews.swift; sourceTree = "<group>"; };
 		CB62AAA52A645BD60B307499 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CC70D28DEA54E65DB3E903F4 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		CC989D2AAE2E013B7B218EF1 /* MIMEParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MIMEParser.swift; sourceTree = "<group>"; };
 		D1163AD5798F175E24B35701 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		DE737F8CBD36B020A534D541 /* Tagging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tagging.swift; sourceTree = "<group>"; };
 		DF8CE4518E1D5D884A85D365 /* OverviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewView.swift; sourceTree = "<group>"; };
 		E350596C13752F9E36BB0066 /* LocalMailService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMailService.swift; sourceTree = "<group>"; };
 		E7442199ACD39A141E67DD66 /* HostMailStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostMailStore.swift; sourceTree = "<group>"; };
@@ -165,6 +169,7 @@
 				302B020F1D56307F7BD0106D /* SMTPClient.swift */,
 				545272ED545D8F8D768628A9 /* SocketConnection.swift */,
 				FB603B1AE94FF6259C1609CB /* StableIdentifier.swift */,
+				DE737F8CBD36B020A534D541 /* Tagging.swift */,
 				B87FD5828FB127D6642A78FB /* ThunderbirdAccounts.swift */,
 				0DE356AC9455B27D5E16E5E1 /* ThunderbirdCredentialImporter.swift */,
 				715C16146AC39E715B27C982 /* ThunderbirdCredentials.swift */,
@@ -204,6 +209,7 @@
 				C5E3062BF64301E4E5B7B4B6 /* SecuritySettingsView.swift */,
 				F19562D7018C7FA3D5FEE0A3 /* SettingsView.swift */,
 				876E4202A805A2FABD1D4325 /* SidebarView.swift */,
+				CA2A8475147A8905AF06F510 /* TagViews.swift */,
 				52EA5C43174135F64DD28AEC /* Theme.swift */,
 			);
 			path = Mailr;
@@ -339,6 +345,7 @@
 				D54B91D9DEE661DC57B45895 /* SMTPClient.swift in Sources */,
 				8562F7FF096B6D92ED8C3246 /* SocketConnection.swift in Sources */,
 				1693CCA130320D9EFEC8C6D1 /* StableIdentifier.swift in Sources */,
+				5552A45D1E0C933F019644D0 /* Tagging.swift in Sources */,
 				393DB5AE9FDAFFF0EC1D478B /* ThunderbirdAccounts.swift in Sources */,
 				70C375D29FC709FAA90C3853 /* ThunderbirdCredentialImporter.swift in Sources */,
 				FB7CF9BFBAFB59E41323D5E6 /* ThunderbirdCredentials.swift in Sources */,
@@ -369,6 +376,7 @@
 				8AB498D0D25A645B2DC79EA3 /* SecuritySettingsView.swift in Sources */,
 				71D8FED8912E34875DBEB8ED /* SettingsView.swift in Sources */,
 				45F4769DFFE58F94C44B4CF6 /* SidebarView.swift in Sources */,
+				F52DA99C9ECBB0BDF16623CB /* TagViews.swift in Sources */,
 				ECB5B56F9F9A07488A9722AD /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

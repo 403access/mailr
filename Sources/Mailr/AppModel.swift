@@ -56,6 +56,14 @@ final class AppModel {
     var messagesError: String?
     var searchText = ""
 
+    // Tags and classification
+    var tags: [MailTag] = []
+    /// Keyed by `TaggedMessage.key(accountID:mailbox:uid:)`.
+    var tagAssignments: [String: [MailTagAssignment]] = [:]
+    var selectedTagFilter: UUID?
+    var classifierStatus: MailClassifierStatus?
+    var isClassifyingTags = false
+
     // Reader
     var currentMessage: MailMessage?
     var isLoadingBody = false
@@ -165,13 +173,51 @@ final class AppModel {
 
     var filteredMessages: [MessageSummary] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return messages }
-        return messages.filter { message in
-            message.subject.localizedCaseInsensitiveContains(query)
-                || message.senderDisplayName.localizedCaseInsensitiveContains(query)
-                || message.senderAddress.localizedCaseInsensitiveContains(query)
-                || message.snippet.localizedCaseInsensitiveContains(query)
+        var result = messages
+
+        if !query.isEmpty {
+            result = result.filter { message in
+                message.subject.localizedCaseInsensitiveContains(query)
+                    || message.senderDisplayName.localizedCaseInsensitiveContains(query)
+                    || message.senderAddress.localizedCaseInsensitiveContains(query)
+                    || message.snippet.localizedCaseInsensitiveContains(query)
+            }
         }
+
+        if let selectedTagFilter {
+            result = result.filter { message in
+                assignments(for: message).contains { $0.tagID == selectedTagFilter }
+            }
+        }
+        return result
+    }
+
+    var enabledTags: [MailTag] {
+        tags.filter(\.isEnabled)
+    }
+
+    func assignments(for message: MessageSummary) -> [MailTagAssignment] {
+        guard let selection, selection.mailboxPath == message.mailbox else { return [] }
+        return tagAssignments[TaggedMessage.key(
+            accountID: selection.accountID,
+            mailbox: message.mailbox,
+            uid: message.uid
+        )] ?? []
+    }
+
+    func tags(for message: MessageSummary) -> [MailTag] {
+        let assigned = assignments(for: message)
+        guard !assigned.isEmpty else { return [] }
+        let lookup = Dictionary(uniqueKeysWithValues: tags.map { ($0.id, $0) })
+        return assigned.compactMap { lookup[$0.tagID] }
+    }
+
+    func hasTag(_ tag: MailTag, on message: MessageSummary) -> Bool {
+        assignments(for: message).contains { $0.tagID == tag.id }
+    }
+
+    func clearTagFilter() {
+        selectedTagFilter = nil
     }
 
     var totalUnread: Int {
@@ -291,6 +337,7 @@ final class AppModel {
         started = true
 
         await refreshHostAccounts()
+        await loadTags()
 
         let demoID = runtimes.first(where: { $0.account.isDemo })?.id
         if let demoID {
@@ -488,6 +535,7 @@ final class AppModel {
         for runtime in runtimes {
             await loadMailboxes(for: runtime.id)
         }
+        await loadTags()
         if isShowingOverview {
             await loadOverview()
         } else if selection != nil {
@@ -685,6 +733,12 @@ final class AppModel {
                 try? database.upsertMessages(hostOnly, accountID: selection.accountID)
             }
 
+            await loadMessageTags(
+                for: merged,
+                accountID: selection.accountID,
+                mailbox: selection.mailboxPath
+            )
+
             if preserveSelection, let id = selectedMessageID,
                !merged.contains(where: { $0.id == id }) {
                 selectedMessageID = nil
@@ -697,6 +751,167 @@ final class AppModel {
 
         if token == loadToken {
             isLoadingMessages = false
+        }
+    }
+
+    // MARK: - Tags
+
+    func loadTags() async {
+        guard let hostStore else {
+            if tags.isEmpty { tags = MailTag.defaults }
+            return
+        }
+
+        do {
+            // An empty successful response means every tag was deleted; keep
+            // that state instead of resurrecting the starter set in the UI.
+            tags = try await hostStore.tags()
+        } catch {
+            if tags.isEmpty {
+                tags = MailTag.defaults
+            }
+        }
+    }
+
+    func loadMessageTags(
+        for messages: [MessageSummary],
+        accountID: UUID,
+        mailbox: String
+    ) async {
+        guard let hostStore, hostAccountIDs.contains(accountID) else { return }
+        let uids = messages.map(\.uid)
+        guard !uids.isEmpty else { return }
+
+        guard let tagged = try? await hostStore.taggedMessages(
+            accountID: accountID,
+            mailbox: mailbox,
+            uids: uids
+        ) else {
+            return
+        }
+
+        let prefix = "\(accountID.uuidString)|\(mailbox)#"
+        for key in Array(tagAssignments.keys) where key.hasPrefix(prefix) {
+            tagAssignments.removeValue(forKey: key)
+        }
+        for item in tagged {
+            tagAssignments[item.key] = item.tags
+        }
+    }
+
+    func refreshClassifierStatus() async {
+        guard let hostStore, isHostMode else {
+            classifierStatus = .disabled
+            return
+        }
+        classifierStatus = try? await hostStore.classifierStatus()
+    }
+
+    func classifyCurrentMailbox(force: Bool = false) async {
+        guard let hostStore, let selection,
+              hostAccountIDs.contains(selection.accountID) else {
+            return
+        }
+        guard !isClassifyingTags else { return }
+
+        isClassifyingTags = true
+        defer { isClassifyingTags = false }
+
+        do {
+            let response = try await hostStore.classify(
+                accountID: selection.accountID,
+                mailbox: selection.mailboxPath,
+                limit: 50,
+                uids: nil,
+                force: force
+            )
+            classifierStatus = response.status
+            await loadTags()
+            await loadMessageTags(
+                for: messages,
+                accountID: selection.accountID,
+                mailbox: selection.mailboxPath
+            )
+
+            if response.classified > 0 {
+                flash("Tagged \(response.classified) message\(response.classified == 1 ? "" : "s").")
+            } else if response.skipped > 0 {
+                flash("Classification is already running on the host.")
+            } else if let message = response.status.message {
+                flash(message)
+            } else {
+                flash("No new messages needed tags.")
+            }
+        } catch {
+            errorMessage = "Could not classify mail: \(error.localizedDescription)"
+        }
+    }
+
+    func toggleTag(_ tag: MailTag, on message: MessageSummary) async {
+        guard let hostStore, let selection,
+              hostAccountIDs.contains(selection.accountID) else {
+            errorMessage = "Tags are managed by the host server. Start it to change tags."
+            return
+        }
+
+        let key = TaggedMessage.key(
+            accountID: selection.accountID,
+            mailbox: message.mailbox,
+            uid: message.uid
+        )
+        let currentlyTagged = tagAssignments[key]?.contains { $0.tagID == tag.id } ?? false
+
+        do {
+            try await hostStore.setMessageTag(
+                accountID: selection.accountID,
+                mailbox: message.mailbox,
+                uid: message.uid,
+                tagID: tag.id,
+                tagged: !currentlyTagged
+            )
+            var updated = tagAssignments[key] ?? []
+            if currentlyTagged {
+                updated.removeAll { $0.tagID == tag.id }
+            } else {
+                updated.append(MailTagAssignment(
+                    tagID: tag.id,
+                    confidence: 1,
+                    source: .manual
+                ))
+            }
+            tagAssignments[key] = updated.isEmpty ? nil : updated
+        } catch {
+            errorMessage = "Could not update the tag: \(error.localizedDescription)"
+        }
+    }
+
+    func saveTag(_ tag: MailTag) async {
+        guard let hostStore, isHostMode else {
+            errorMessage = "Tags are managed by the host server. Start it to edit tags."
+            return
+        }
+        do {
+            try await hostStore.saveTag(tag)
+            if !tag.isEnabled, selectedTagFilter == tag.id {
+                selectedTagFilter = nil
+            }
+            await loadTags()
+        } catch {
+            errorMessage = "Could not save the tag: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteTag(_ tag: MailTag) async {
+        guard let hostStore, isHostMode else {
+            errorMessage = "Tags are managed by the host server. Start it to edit tags."
+            return
+        }
+        do {
+            try await hostStore.deleteTag(id: tag.id)
+            if selectedTagFilter == tag.id { selectedTagFilter = nil }
+            await loadTags()
+        } catch {
+            errorMessage = "Could not delete the tag: \(error.localizedDescription)"
         }
     }
 

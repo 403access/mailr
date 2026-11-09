@@ -47,11 +47,14 @@ struct MailrServerCommand {
             return ["1", "true", "yes", "on"].contains(raw)
         }
 
+        let tagging = TaggingConfiguration.load(environment: environment)
         let syncConfiguration = HostMailSyncEngine.Configuration(
             interval: TimeInterval(positiveInt("MAILR_HOST_SYNC_INTERVAL", default: 300)),
             messageLimit: positiveInt("MAILR_HOST_SYNC_LIMIT", default: 100),
             prefetchBodyLimit: positiveInt("MAILR_HOST_PREFETCH", default: 20),
-            syncAllMailboxes: enabled("MAILR_HOST_SYNC_ALL")
+            syncAllMailboxes: enabled("MAILR_HOST_SYNC_ALL"),
+            tagging: tagging,
+            classificationLimit: positiveInt("MAILR_CLASSIFY_LIMIT", default: 10)
         )
         let syncEngine = HostMailSyncEngine(
             database: database,
@@ -75,6 +78,11 @@ struct MailrServerCommand {
         print("Mailr host server listening on http://\(host):\(boundPort)")
         print("Database: \(databaseURL.path)")
         print("IMAP sync: every \(Int(syncConfiguration.interval))s, newest \(syncConfiguration.messageLimit) messages per mailbox")
+        if tagging.enabled {
+            print("Tagging: \(tagging.model) via \(tagging.baseURL.absoluteString) (keyword fallback enabled)")
+        } else {
+            print("Tagging: disabled with MAILR_CLASSIFY=off")
+        }
         print("Set MAILR_HOST_SERVER=http://\(host):\(boundPort) in .env if the client uses another address.")
         print("Press Control-C to stop.")
 

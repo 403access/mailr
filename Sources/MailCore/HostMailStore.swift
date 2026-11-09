@@ -258,6 +258,87 @@ public struct HostErrorResponse: Codable, Sendable {
     }
 }
 
+// MARK: - Tagging wire types
+
+public struct HostTagRequest: Codable, Sendable {
+    public var tag: MailTag
+
+    public init(tag: MailTag) {
+        self.tag = tag
+    }
+}
+
+public struct HostTaggedMessagesResponse: Codable, Sendable {
+    public var messages: [TaggedMessage]
+
+    public init(messages: [TaggedMessage]) {
+        self.messages = messages
+    }
+}
+
+public struct HostMessageTagRequest: Codable, Sendable {
+    public var accountID: UUID
+    public var mailbox: String
+    public var uid: UInt32
+    public var tagID: UUID
+    public var tagged: Bool
+
+    public init(
+        accountID: UUID,
+        mailbox: String,
+        uid: UInt32,
+        tagID: UUID,
+        tagged: Bool
+    ) {
+        self.accountID = accountID
+        self.mailbox = mailbox
+        self.uid = uid
+        self.tagID = tagID
+        self.tagged = tagged
+    }
+}
+
+public struct HostClassifyRequest: Codable, Sendable {
+    public var accountID: UUID
+    public var mailbox: String
+    public var limit: Int
+    public var uids: [UInt32]?
+    public var force: Bool
+
+    public init(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int = 50,
+        uids: [UInt32]? = nil,
+        force: Bool = false
+    ) {
+        self.accountID = accountID
+        self.mailbox = mailbox
+        self.limit = limit
+        self.uids = uids
+        self.force = force
+    }
+}
+
+public struct HostClassifyResponse: Codable, Sendable {
+    public var classified: Int
+    public var skipped: Int
+    public var failed: Int
+    public var status: MailClassifierStatus
+
+    public init(
+        classified: Int,
+        skipped: Int = 0,
+        failed: Int = 0,
+        status: MailClassifierStatus
+    ) {
+        self.classified = classified
+        self.skipped = skipped
+        self.failed = failed
+        self.status = status
+    }
+}
+
 // MARK: - Client protocol
 
 public protocol HostMailStore: Sendable {
@@ -287,6 +368,60 @@ public protocol HostMailStore: Sendable {
         isAnswered: Bool?
     ) async throws
     func saveMailboxes(_ mailboxes: [Mailbox], accountID: UUID) async throws
+
+    // Tagging. Implementations that predate these routes can keep the default
+    // no-op behaviour below.
+    func tags() async throws -> [MailTag]
+    func saveTag(_ tag: MailTag) async throws
+    func deleteTag(id: UUID) async throws
+    func taggedMessages(
+        accountID: UUID,
+        mailbox: String,
+        uids: [UInt32]
+    ) async throws -> [TaggedMessage]
+    func setMessageTag(
+        accountID: UUID,
+        mailbox: String,
+        uid: UInt32,
+        tagID: UUID,
+        tagged: Bool
+    ) async throws
+    func classify(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int,
+        uids: [UInt32]?,
+        force: Bool
+    ) async throws -> HostClassifyResponse
+    func classifierStatus() async throws -> MailClassifierStatus
+}
+
+public extension HostMailStore {
+    func tags() async throws -> [MailTag] { [] }
+    func saveTag(_ tag: MailTag) async throws {}
+    func deleteTag(id: UUID) async throws {}
+    func taggedMessages(
+        accountID: UUID,
+        mailbox: String,
+        uids: [UInt32]
+    ) async throws -> [TaggedMessage] { [] }
+    func setMessageTag(
+        accountID: UUID,
+        mailbox: String,
+        uid: UInt32,
+        tagID: UUID,
+        tagged: Bool
+    ) async throws {}
+    func classify(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int,
+        uids: [UInt32]?,
+        force: Bool
+    ) async throws -> HostClassifyResponse {
+        HostClassifyResponse(classified: 0, status: .disabled)
+    }
+    func classifierStatus() async throws -> MailClassifierStatus { .disabled }
 }
 
 // MARK: - HTTP client
@@ -434,6 +569,83 @@ public struct HTTPHostMailStore: HostMailStore {
         _ = try await send("POST", path: "v1/mailboxes", body: try encode(request))
     }
 
+    public func tags() async throws -> [MailTag] {
+        try await get("v1/tags")
+    }
+
+    public func saveTag(_ tag: MailTag) async throws {
+        let request = HostTagRequest(tag: tag)
+        _ = try await send("POST", path: "v1/tags", body: try encode(request))
+    }
+
+    public func deleteTag(id: UUID) async throws {
+        _ = try await send(
+            "DELETE",
+            path: "v1/tags",
+            query: [URLQueryItem(name: "id", value: id.uuidString)]
+        )
+    }
+
+    public func taggedMessages(
+        accountID: UUID,
+        mailbox: String,
+        uids: [UInt32]
+    ) async throws -> [TaggedMessage] {
+        guard !uids.isEmpty else { return [] }
+        let response: HostTaggedMessagesResponse = try await get(
+            "v1/messages/tags",
+            query: [
+                URLQueryItem(name: "accountID", value: accountID.uuidString),
+                URLQueryItem(name: "mailbox", value: mailbox),
+                URLQueryItem(name: "uids", value: uids.map(String.init).joined(separator: ","))
+            ]
+        )
+        return response.messages
+    }
+
+    public func setMessageTag(
+        accountID: UUID,
+        mailbox: String,
+        uid: UInt32,
+        tagID: UUID,
+        tagged: Bool
+    ) async throws {
+        let request = HostMessageTagRequest(
+            accountID: accountID,
+            mailbox: mailbox,
+            uid: uid,
+            tagID: tagID,
+            tagged: tagged
+        )
+        _ = try await send("POST", path: "v1/messages/tags", body: try encode(request))
+    }
+
+    public func classify(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int,
+        uids: [UInt32]?,
+        force: Bool
+    ) async throws -> HostClassifyResponse {
+        let request = HostClassifyRequest(
+            accountID: accountID,
+            mailbox: mailbox,
+            limit: limit,
+            uids: uids,
+            force: force
+        )
+        return try await sendJSON(
+            "POST",
+            path: "v1/classify",
+            body: try encode(request),
+            timeout: 300
+        )
+    }
+
+    public func classifierStatus() async throws -> MailClassifierStatus {
+        try await get("v1/classifier", timeout: 10)
+    }
+
     // MARK: Requests
 
     private func get<T: Decodable>(
@@ -442,6 +654,16 @@ public struct HTTPHostMailStore: HostMailStore {
         timeout: TimeInterval = 30
     ) async throws -> T {
         let data = try await send("GET", path: path, query: query, timeout: timeout)
+        return try decode(data)
+    }
+
+    private func sendJSON<T: Decodable>(
+        _ method: String,
+        path: String,
+        body: Data,
+        timeout: TimeInterval = 30
+    ) async throws -> T {
+        let data = try await send(method, path: path, body: body, timeout: timeout)
         return try decode(data)
     }
 

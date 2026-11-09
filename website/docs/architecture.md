@@ -30,6 +30,7 @@ Sources/
     HostMailServer.swift    HTTP server, router, and async action bridge
     HostMailSync.swift      Host-side IMAP downloader and origin proxy
     HostMailService.swift   Client MailService backed by the host HTTP API
+    Tagging.swift           Editable tags, Ollama classifier, keyword fallback
     DemoMailService.swift   Seeded offline mailbox
   MailrServer/              Standalone host server executable
   MailrImport/              mailr-import command-line tool
@@ -38,8 +39,9 @@ Sources/
     RootView.swift          Adaptive iPhone / iPad+Mac shells
     SidebarView.swift       Accounts, mailboxes, iPhone mailbox drawer
     OverviewView.swift      Stats dashboard across all accounts and mailboxes
-    MessageListView.swift   Message browser and rows
-    MessageDetailView.swift Reader, actions, attachment export
+    MessageListView.swift   Message browser, tag filter, rows
+    MessageDetailView.swift Reader, tags, actions, attachment export
+    TagViews.swift          Tag chips, picker, filter bar, and tag editor
     HTMLMessageView.swift   Locked-down WKWebView (iOS and macOS)
     ComposeView.swift       Compose sheet and file importer
     SettingsView.swift      Account management and Privacy entry
@@ -109,3 +111,6 @@ defence) and sent by `SMTPClient` using EHLO plus AUTH LOGIN or PLAIN.
   flag so the reader can distinguish mailbox-only, host-only, and mirrored mail.
 - Clients in host mode keep an offline cache in their own `mailr.sqlite3` and
   use the host for new mail, actions, and sending.
+- Tag definitions, per-message assignments, and classification state live in
+  `host-mail.sqlite3`. The host classifies new mail with a local Ollama model
+  and exposes tags over `/v1/tags`, `/v1/messages/tags`, and `/v1/classify`.

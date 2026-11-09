@@ -31,6 +31,11 @@ description: What Mailr does, from IMAP and SMTP to the MIME engine and demo mod
   mailboxes, messages, flags, moves, deletes, and sends through it. Mail that
   later disappears from the IMAP mailbox stays readable, and each opened message
   shows whether it is on the mailbox, only on the host, or both.
+- **Local email tags.** The host classifies mail with a small Ollama model and
+  shares editable tags with every client. Starter tags cover action items,
+  newsletters, receipts, notifications, personal mail, and work. A keyword
+  matcher keeps tagging usable when Ollama is offline, and tags can always be
+  added or removed manually. Filter the message list by tag from the chip bar.
 
 ## Migrating from Thunderbird
 

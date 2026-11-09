@@ -397,6 +397,76 @@ public struct HostMailRouter: Sendable {
                 try database.saveMailboxes(payload.mailboxes, accountID: payload.accountID)
                 return .json(HostSyncResponse(stored: payload.mailboxes.count))
 
+            case ("GET", "/v1/tags"):
+                return .json(try database.loadTags())
+
+            case ("POST", "/v1/tags"):
+                let payload = try decode(HostTagRequest.self, request.body)
+                try database.saveTag(payload.tag)
+                return .json(try database.loadTags())
+
+            case ("DELETE", "/v1/tags"):
+                let tagID = try uuid(request.query["id"])
+                try database.deleteTag(id: tagID)
+                return .json(try database.loadTags())
+
+            case ("GET", "/v1/messages/tags"):
+                let accountID = try uuid(request.query["accountID"])
+                let mailbox = try text(request.query["mailbox"])
+                var uids = uidList(request.query["uids"])
+                if uids.isEmpty {
+                    uids = try database.loadMessages(
+                        accountID: accountID,
+                        mailbox: mailbox,
+                        limit: 500
+                    ).map(\.uid)
+                }
+                let messages = try database.loadTaggedMessages(
+                    accountID: accountID,
+                    mailbox: mailbox,
+                    uids: uids
+                )
+                return .json(HostTaggedMessagesResponse(messages: messages))
+
+            case ("POST", "/v1/messages/tags"):
+                let payload = try decode(HostMessageTagRequest.self, request.body)
+                try database.setMessageTag(
+                    accountID: payload.accountID,
+                    mailbox: payload.mailbox,
+                    uid: payload.uid,
+                    tagID: payload.tagID,
+                    tagged: payload.tagged
+                )
+                return .json(HostSyncResponse(stored: 1))
+
+            case ("GET", "/v1/classifier"):
+                guard let actions else {
+                    return .json(MailClassifierStatus.disabled)
+                }
+                let status: MailClassifierStatus = try perform {
+                    await actions.classifierStatus()
+                }
+                return .json(status)
+
+            case ("POST", "/v1/classify"):
+                guard let actions else {
+                    return .error(
+                        "Classification is only available when the host sync engine is running.",
+                        status: 501
+                    )
+                }
+                let payload = try decode(HostClassifyRequest.self, request.body)
+                let response: HostClassifyResponse = try perform {
+                    try await actions.classify(
+                        accountID: payload.accountID,
+                        mailbox: payload.mailbox,
+                        limit: payload.limit,
+                        uids: payload.uids,
+                        force: payload.force
+                    )
+                }
+                return .json(response)
+
             default:
                 return .error("No route for \(request.method) \(request.path).", status: 404)
             }
@@ -444,6 +514,13 @@ public struct HostMailRouter: Sendable {
         } catch {
             throw RouteError(message: "Invalid JSON body: \(error.localizedDescription)")
         }
+    }
+
+    private func uidList(_ raw: String?) -> [UInt32] {
+        guard let raw else { return [] }
+        return raw
+            .split(separator: ",")
+            .compactMap { UInt32($0.trimmingCharacters(in: .whitespaces)) }
     }
 
     private func uuid(_ raw: String?) throws -> UUID {

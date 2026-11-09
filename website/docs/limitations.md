@@ -17,6 +17,9 @@ description: Known gaps and possible next steps for Mailr.
 - The local cache stores the newest 100 messages per mailbox; older mail is
   fetched from the server when it returns to the window.
 - Search is local. There is no server-side search yet.
+- Tagging requires host mode. The default `qwen2.5:1.5b` model is small and fast
+  but less accurate than a larger model. Keyword fallback is intentionally
+  simple, and there is no per-user training or feedback loop yet.
 - Compose does not autosave drafts, and there is no conversation/thread view or
   undo-delete.
 - Attachments are downloaded on demand from the full message body; there is no

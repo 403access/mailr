@@ -45,6 +45,28 @@ public protocol HostMailActions: Sendable {
     func delete(accountID: UUID, mailbox: String, uid: UInt32) async throws
     func send(_ message: OutgoingMessage, accountID: UUID) async throws
     func statusSnapshot() async -> HostMailSyncStatus
+    func classify(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int,
+        uids: [UInt32]?,
+        force: Bool
+    ) async throws -> HostClassifyResponse
+    func classifierStatus() async -> MailClassifierStatus
+}
+
+public extension HostMailActions {
+    func classify(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int,
+        uids: [UInt32]?,
+        force: Bool
+    ) async throws -> HostClassifyResponse {
+        HostClassifyResponse(classified: 0, status: .disabled)
+    }
+
+    func classifierStatus() async -> MailClassifierStatus { .disabled }
 }
 
 // MARK: - Engine
@@ -63,6 +85,10 @@ public actor HostMailSyncEngine: HostMailActions {
         public var freshness: TimeInterval
         /// Refresh every mailbox in the background, not just the Inbox.
         public var syncAllMailboxes: Bool
+        /// Classify newly seen messages with the local Ollama model.
+        public var tagging: TaggingConfiguration
+        /// Maximum messages classified per mailbox refresh.
+        public var classificationLimit: Int
         public var environment: [String: String]
         public var candidateURLs: [URL]?
 
@@ -72,6 +98,8 @@ public actor HostMailSyncEngine: HostMailActions {
             prefetchBodyLimit: Int = 20,
             freshness: TimeInterval = 30,
             syncAllMailboxes: Bool = false,
+            tagging: TaggingConfiguration = TaggingConfiguration(),
+            classificationLimit: Int = 10,
             environment: [String: String] = ProcessInfo.processInfo.environment,
             candidateURLs: [URL]? = nil
         ) {
@@ -80,6 +108,8 @@ public actor HostMailSyncEngine: HostMailActions {
             self.prefetchBodyLimit = prefetchBodyLimit
             self.freshness = freshness
             self.syncAllMailboxes = syncAllMailboxes
+            self.tagging = tagging
+            self.classificationLimit = classificationLimit
             self.environment = environment
             self.candidateURLs = candidateURLs
         }
@@ -88,6 +118,8 @@ public actor HostMailSyncEngine: HostMailActions {
     private let database: MailDatabase
     private let hostCredentials: HostCredentialStore
     private let configuration: Configuration
+    private let classifier: EmailTagClassifier
+    private var isClassifying = false
 
     private var accounts: [MailAccount]
     private var environmentPasswords: [String: String]
@@ -111,6 +143,7 @@ public actor HostMailSyncEngine: HostMailActions {
         self.database = database
         self.hostCredentials = hostCredentials
         self.configuration = configuration
+        self.classifier = EmailTagClassifier(configuration: configuration.tagging)
 
         var environmentAccounts: [EnvironmentAccount] = []
         if let loaded = try? EnvironmentAccounts.load(
@@ -354,6 +387,22 @@ public actor HostMailSyncEngine: HostMailActions {
             }
         }
 
+        // Classification is deliberately fire-and-forget: a slow local model
+        // must never hold up IMAP sync or a client request.
+        if configuration.tagging.enabled, configuration.classificationLimit > 0 {
+            let limit = configuration.classificationLimit
+            let uids = summaries.map(\.uid)
+            Task { [weak self] in
+                _ = try? await self?.classify(
+                    accountID: accountID,
+                    mailbox: mailbox,
+                    limit: limit,
+                    uids: uids,
+                    force: false
+                )
+            }
+        }
+
         mailboxFreshness[key] = Date()
         return try database.loadMessages(
             accountID: accountID,
@@ -404,6 +453,99 @@ public actor HostMailSyncEngine: HostMailActions {
         }
         try database.saveMessage(message, accountID: accountID)
         return message
+    }
+
+    // MARK: Tagging
+
+    public func classifierStatus() async -> MailClassifierStatus {
+        await classifier.status()
+    }
+
+    public func classify(
+        accountID: UUID,
+        mailbox: String,
+        limit: Int,
+        uids: [UInt32]?,
+        force: Bool
+    ) async throws -> HostClassifyResponse {
+        guard configuration.tagging.enabled else {
+            return HostClassifyResponse(classified: 0, status: .disabled)
+        }
+
+        let status = await classifier.status()
+        let tags = try database.loadTags().filter(\.isEnabled)
+        guard !tags.isEmpty else {
+            return HostClassifyResponse(classified: 0, status: status)
+        }
+
+        // A single local model request at a time keeps memory use predictable
+        // on small machines. A manual request during a background pass simply
+        // reports that work is already in progress.
+        guard !isClassifying else {
+            return HostClassifyResponse(classified: 0, skipped: 1, status: status)
+        }
+        isClassifying = true
+        defer { isClassifying = false }
+
+        let scopedLimit = min(max(limit, 1), 500)
+        let candidates: [MessageSummary]
+        if let uids {
+            let wanted = Set(uids)
+            candidates = try database.loadMessages(
+                accountID: accountID,
+                mailbox: mailbox,
+                limit: 10_000
+            ).filter { wanted.contains($0.uid) }
+        } else {
+            candidates = try database.loadMessages(
+                accountID: accountID,
+                mailbox: mailbox,
+                limit: scopedLimit
+            )
+        }
+
+        // Filter before applying the limit: the newest messages may already be
+        // classified while older ones in the same window are still pending.
+        let pendingIDs = Set(try database.unclassifiedUIDs(
+            accountID: accountID,
+            mailbox: mailbox,
+            uids: candidates.map(\.uid),
+            force: force
+        ))
+        let pending = candidates
+            .filter { pendingIDs.contains($0.uid) }
+            .prefix(scopedLimit)
+
+        var classified = 0
+        var failed = 0
+        for summary in pending {
+            let message = (try? database.loadMessage(
+                accountID: accountID,
+                mailbox: mailbox,
+                uid: summary.uid
+            )) ?? MailMessage(summary: summary)
+
+            let outcome = await classifier.classify(message: message, tags: tags)
+            do {
+                try database.saveClassification(
+                    outcome.classifications,
+                    accountID: accountID,
+                    mailbox: mailbox,
+                    uid: summary.uid,
+                    classifier: outcome.backend.rawValue
+                )
+                classified += 1
+            } catch {
+                failed += 1
+            }
+        }
+
+        return HostClassifyResponse(
+            classified: classified,
+            skipped: max(0, candidates.count - pending.count),
+            failed: failed,
+            status: status
+        )
     }
 
     // MARK: Actions

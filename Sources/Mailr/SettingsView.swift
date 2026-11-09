@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var editingRequest: AccountEditorRequest?
     @State private var pendingDeletion: MailAccount?
     @State private var showSecurity = false
+    @State private var showTags = false
     @State private var hostPasswordAccount: MailAccount?
 
     private struct AccountEditorRequest: Identifiable {
@@ -37,6 +38,9 @@ struct SettingsView: View {
 
                     privacySection
                     hostArchiveSection
+                    if model.isHostMode {
+                        classificationSection
+                    }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -57,6 +61,9 @@ struct SettingsView: View {
 
                     privacySection
                     hostArchiveSection
+                    if model.isHostMode {
+                        classificationSection
+                    }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -71,7 +78,10 @@ struct SettingsView: View {
         .background { MailrBackground() }
         .tint(MailrTheme.accent)
         .onAppear { lock.refreshBiometry() }
-        .task { await model.refreshHostArchiveStatus() }
+        .task {
+            await model.refreshHostArchiveStatus()
+            await model.refreshClassifierStatus()
+        }
         .sheet(item: $editingRequest) { request in
             AccountEditorView(account: request.account)
                 .environment(model)
@@ -80,6 +90,11 @@ struct SettingsView: View {
         .sheet(isPresented: $showSecurity) {
             SecuritySettingsView()
                 .environment(lock)
+                .mailrLargeDetent()
+        }
+        .sheet(isPresented: $showTags) {
+            TagSettingsView()
+                .environment(model)
                 .mailrLargeDetent()
         }
         .sheet(item: $hostPasswordAccount) { account in
@@ -286,6 +301,70 @@ struct SettingsView: View {
         } header: {
             MailrSectionLabel(text: "Host server")
                 .padding(.leading, 4)
+        }
+    }
+
+    private var classificationSection: some View {
+        Section {
+            Button {
+                showTags = true
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(MailrTheme.accent.opacity(0.12))
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(MailrTheme.accentDeep)
+                    }
+                    .frame(width: 32, height: 32)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tags & Classification")
+                            .font(.system(size: 13.5, weight: .semibold, design: .rounded))
+                            .foregroundStyle(MailrTheme.ink)
+                        Text(classificationSubtitle)
+                            .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                            .foregroundStyle(MailrTheme.inkSecondary)
+                            .lineLimit(2)
+                    }
+
+                    Spacer()
+
+                    if model.isClassifyingTags {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(MailrTheme.inkTertiary)
+                }
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .mailrCard(radius: 16, shadowRadius: 8)
+            .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 12, trailing: 12))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+        } header: {
+            MailrSectionLabel(text: "Classification")
+                .padding(.leading, 4)
+        }
+    }
+
+    private var classificationSubtitle: String {
+        guard let status = model.classifierStatus else {
+            return "\(model.tags.count) tags · checking the local model"
+        }
+        switch status.backend {
+        case .ollama:
+            return "\(model.tags.count) tags · \(status.available ? "Ollama ready" : "model missing")"
+        case .keywords:
+            return "\(model.tags.count) tags · keyword fallback"
+        case .disabled:
+            return "\(model.tags.count) tags · classification off"
         }
     }
 

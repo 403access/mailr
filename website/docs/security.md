@@ -31,6 +31,11 @@ description: How Mailr protects credentials, message rendering, and your data.
   launch, copies passwords to the Keychain, and never writes them into the
   SQLite account table. `.env` is git-ignored; keep its permissions restricted
   (for example `chmod 600 .env`).
+- Tag definitions and assignments live in the host database. Classification
+  prompts go only to the Ollama URL configured on the host, which defaults to
+  `http://127.0.0.1:11434`. Pointing `MAILR_OLLAMA_URL` at a remote server sends
+  email text off the machine; keep it on loopback for fully local
+  classification.
 
 ## App Lock
 

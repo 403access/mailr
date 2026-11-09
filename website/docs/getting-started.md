@@ -72,6 +72,23 @@ MAILR_HOST_SERVER=http://<Mac-LAN-IP>:8788
 Add each account's password in **Mailr → Settings → host account → Password** on
 the Mac, or in the host `.env` file.
 
+## Email tags (optional)
+
+Tags are stored by the host server, so the Mac, iPhone, and iPad see the same
+labels. The host uses a small model served by [Ollama](https://ollama.com) over
+loopback:
+
+```bash
+ollama pull qwen2.5:1.5b
+ollama serve
+make host-install
+```
+
+Configure tags in **Settings → Classification → Tags & Classification**. If
+Ollama is not running, Mailr falls back to keyword matching, so tags still work
+without an extra service. Set `MAILR_CLASSIFY=off` to disable automatic
+classification entirely.
+
 ## Simulator shortcuts
 
 Debug builds understand a `MAILR_UI_PREVIEW` environment variable so screenshots

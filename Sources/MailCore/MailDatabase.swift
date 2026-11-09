@@ -150,6 +150,7 @@ public final class MailDatabase: @unchecked Sendable {
         try execLocked("PRAGMA synchronous = NORMAL;")
 
         try createSchemaLocked()
+        try seedDefaultTagsLocked()
         try migrateLegacyAccountsLocked()
     }
 
@@ -247,6 +248,42 @@ public final class MailDatabase: @unchecked Sendable {
             sort_index INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (account_id, mailbox, uid, attachment_id)
         );
+
+        CREATE TABLE IF NOT EXISTS tags (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            detail TEXT NOT NULL DEFAULT '',
+            keywords_json TEXT NOT NULL DEFAULT '[]',
+            color_hex TEXT NOT NULL DEFAULT '#5B7CFA',
+            symbol_name TEXT NOT NULL DEFAULT 'tag',
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            is_built_in INTEGER NOT NULL DEFAULT 0,
+            sort_index INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS message_tags (
+            account_id TEXT NOT NULL,
+            mailbox TEXT NOT NULL,
+            uid INTEGER NOT NULL,
+            tag_id TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 0,
+            source TEXT NOT NULL DEFAULT 'auto',
+            is_hidden INTEGER NOT NULL DEFAULT 0,
+            updated_at REAL NOT NULL,
+            PRIMARY KEY (account_id, mailbox, uid, tag_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_message_tags_message
+            ON message_tags(account_id, mailbox, uid);
+
+        CREATE TABLE IF NOT EXISTS message_tag_state (
+            account_id TEXT NOT NULL,
+            mailbox TEXT NOT NULL,
+            uid INTEGER NOT NULL,
+            classifier TEXT NOT NULL,
+            classified_at REAL NOT NULL,
+            PRIMARY KEY (account_id, mailbox, uid)
+        );
         """)
 
         // Databases created by interim builds may predate the count columns.
@@ -254,6 +291,23 @@ public final class MailDatabase: @unchecked Sendable {
         try? execLocked("ALTER TABLE mailboxes ADD COLUMN unread_count INTEGER NOT NULL DEFAULT 0;")
         try? execLocked("ALTER TABLE mailboxes ADD COLUMN total_count INTEGER NOT NULL DEFAULT 0;")
         try? execLocked("ALTER TABLE messages ADD COLUMN on_mailbox INTEGER NOT NULL DEFAULT 1;")
+    }
+
+    /// Inserts the starter tag set once. Deleting every tag later does not cause
+    /// the set to come back, because the `tags_seeded` marker is persistent.
+    private func seedDefaultTagsLocked() throws {
+        if (try? metaValueLocked("tags_seeded")) == "1" { return }
+        try withDatabase { _ in
+            let count = try prepare(try handleLocked(), "SELECT COUNT(*) FROM tags;")
+            defer { sqlite3_finalize(count) }
+            let hasRows = try step(count) && sqlite3_column_int64(count, 0) > 0
+            if !hasRows {
+                for tag in MailTag.defaults {
+                    try saveTagLocked(tag)
+                }
+            }
+        }
+        try setMetaLocked("tags_seeded", "1")
     }
 
     /// Imports the pre-SQLite `accounts.json` file once and renames it so it is
@@ -422,7 +476,7 @@ public final class MailDatabase: @unchecked Sendable {
 
     private func deleteAccountLocked(_ id: String) throws {
         let database = try handleLocked()
-        for table in ["attachments", "message_bodies", "messages", "mailboxes", "accounts"] {
+        for table in ["message_tags", "message_tag_state", "attachments", "message_bodies", "messages", "mailboxes", "accounts"] {
             let column = table == "accounts" ? "id" : "account_id"
             let statement = try prepare(
                 database,
@@ -509,6 +563,302 @@ public final class MailDatabase: @unchecked Sendable {
                     sqlite3_bind_int64(statement, 7, Int64(box.totalCount))
                     sqlite3_bind_int64(statement, 8, Int64(index))
                     try run(statement)
+                }
+            }
+        }
+    }
+
+    // MARK: Tags
+
+    public func loadTags() throws -> [MailTag] {
+        try withDatabase { database in
+            let statement = try prepare(database, """
+            SELECT id, name, detail, keywords_json, color_hex, symbol_name,
+                   is_enabled, is_built_in, sort_index
+            FROM tags
+            ORDER BY sort_index ASC, name ASC;
+            """)
+            defer { sqlite3_finalize(statement) }
+
+            var tags: [MailTag] = []
+            while try step(statement) {
+                guard let id = UUID(uuidString: text(statement, 0) ?? "") else { continue }
+                tags.append(MailTag(
+                    id: id,
+                    name: text(statement, 1) ?? "",
+                    detail: text(statement, 2) ?? "",
+                    keywords: (try? decode([String].self, text(statement, 3))) ?? [],
+                    colorHex: text(statement, 4) ?? "#5B7CFA",
+                    symbolName: text(statement, 5) ?? "tag",
+                    isEnabled: sqlite3_column_int(statement, 6) != 0,
+                    isBuiltIn: sqlite3_column_int(statement, 7) != 0,
+                    sortIndex: Int(sqlite3_column_int64(statement, 8))
+                ))
+            }
+            return tags
+        }
+    }
+
+    public func saveTag(_ tag: MailTag) throws {
+        try withDatabase { _ in
+            try saveTagLocked(tag)
+        }
+    }
+
+    private func saveTagLocked(_ tag: MailTag) throws {
+        let statement = try prepare(try handleLocked(), """
+        INSERT INTO tags (
+            id, name, detail, keywords_json, color_hex, symbol_name,
+            is_enabled, is_built_in, sort_index
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            detail = excluded.detail,
+            keywords_json = excluded.keywords_json,
+            color_hex = excluded.color_hex,
+            symbol_name = excluded.symbol_name,
+            is_enabled = excluded.is_enabled,
+            is_built_in = excluded.is_built_in,
+            sort_index = excluded.sort_index;
+        """)
+        defer { sqlite3_finalize(statement) }
+        bind(statement, 1, tag.id.uuidString)
+        bind(statement, 2, tag.name)
+        bind(statement, 3, tag.detail)
+        bind(statement, 4, try encode(tag.keywords))
+        bind(statement, 5, tag.colorHex)
+        bind(statement, 6, tag.symbolName)
+        sqlite3_bind_int(statement, 7, tag.isEnabled ? 1 : 0)
+        sqlite3_bind_int(statement, 8, tag.isBuiltIn ? 1 : 0)
+        sqlite3_bind_int64(statement, 9, Int64(tag.sortIndex))
+        try run(statement)
+    }
+
+    public func deleteTag(id: UUID) throws {
+        try withDatabase { _ in
+            try transactionLocked {
+                let database = try handleLocked()
+                let assignments = try prepare(
+                    database,
+                    "DELETE FROM message_tags WHERE tag_id = ?;"
+                )
+                bind(assignments, 1, id.uuidString)
+                try run(assignments)
+                sqlite3_finalize(assignments)
+
+                let tag = try prepare(database, "DELETE FROM tags WHERE id = ?;")
+                bind(tag, 1, id.uuidString)
+                try run(tag)
+                sqlite3_finalize(tag)
+            }
+        }
+    }
+
+    /// Returns visible tag assignments for the requested UIDs. Hidden rows are
+    /// manual removals and are deliberately excluded from the result.
+    public func loadTaggedMessages(
+        accountID: UUID,
+        mailbox: String,
+        uids: [UInt32]
+    ) throws -> [TaggedMessage] {
+        guard !uids.isEmpty else { return [] }
+        return try withDatabase { database in
+            let placeholders = Array(repeating: "?", count: uids.count).joined(separator: ", ")
+            let statement = try prepare(database, """
+            SELECT uid, tag_id, confidence, source
+            FROM message_tags
+            WHERE account_id = ? AND mailbox = ? AND is_hidden = 0
+              AND uid IN (\(placeholders))
+            ORDER BY confidence DESC;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, mailbox)
+            for (index, uid) in uids.enumerated() {
+                sqlite3_bind_int64(statement, Int32(index + 3), Int64(uid))
+            }
+
+            var assignments: [UInt32: [MailTagAssignment]] = [:]
+            while try step(statement) {
+                let uid = UInt32(clamping: sqlite3_column_int64(statement, 0))
+                guard let tagID = UUID(uuidString: text(statement, 1) ?? "") else { continue }
+                let confidence = sqlite3_column_double(statement, 2)
+                let source = TagAssignmentSource(rawValue: text(statement, 3) ?? "") ?? .automatic
+                assignments[uid, default: []].append(MailTagAssignment(
+                    tagID: tagID,
+                    confidence: confidence,
+                    source: source
+                ))
+            }
+
+            return uids.compactMap { uid in
+                guard let tags = assignments[uid], !tags.isEmpty else { return nil }
+                return TaggedMessage(
+                    accountID: accountID,
+                    mailbox: mailbox,
+                    uid: uid,
+                    tags: tags
+                )
+            }
+        }
+    }
+
+    /// UIDs that have never been through the classifier. `force` returns every
+    /// requested UID so a settings action can re-run classification.
+    public func unclassifiedUIDs(
+        accountID: UUID,
+        mailbox: String,
+        uids: [UInt32],
+        force: Bool = false
+    ) throws -> [UInt32] {
+        guard !uids.isEmpty, !force else { return uids }
+        return try withDatabase { database in
+            let placeholders = Array(repeating: "?", count: uids.count).joined(separator: ", ")
+            let statement = try prepare(database, """
+            SELECT uid FROM message_tag_state
+            WHERE account_id = ? AND mailbox = ? AND uid IN (\(placeholders));
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, mailbox)
+            for (index, uid) in uids.enumerated() {
+                sqlite3_bind_int64(statement, Int32(index + 3), Int64(uid))
+            }
+
+            var classified: Set<UInt32> = []
+            while try step(statement) {
+                classified.insert(UInt32(clamping: sqlite3_column_int64(statement, 0)))
+            }
+            return uids.filter { !classified.contains($0) }
+        }
+    }
+
+    /// Replaces automatic assignments for one message while preserving manual
+    /// overrides. An empty classification still records that the message was
+    /// processed, so it is not reclassified on every sync.
+    public func saveClassification(
+        _ classifications: [MailTagClassification],
+        accountID: UUID,
+        mailbox: String,
+        uid: UInt32,
+        classifier: String
+    ) throws {
+        try withDatabase { _ in
+            try transactionLocked {
+                let database = try handleLocked()
+                let now = Date().timeIntervalSince1970
+
+                let clear = try prepare(database, """
+                DELETE FROM message_tags
+                WHERE account_id = ? AND mailbox = ? AND uid = ? AND source = 'auto';
+                """)
+                bind(clear, 1, accountID.uuidString)
+                bind(clear, 2, mailbox)
+                sqlite3_bind_int64(clear, 3, Int64(uid))
+                try run(clear)
+                sqlite3_finalize(clear)
+
+                let manual = try prepare(database, """
+                SELECT tag_id FROM message_tags
+                WHERE account_id = ? AND mailbox = ? AND uid = ? AND source = 'manual';
+                """)
+                bind(manual, 1, accountID.uuidString)
+                bind(manual, 2, mailbox)
+                sqlite3_bind_int64(manual, 3, Int64(uid))
+                var manualIDs: Set<String> = []
+                while try step(manual) {
+                    if let tagID = text(manual, 0) { manualIDs.insert(tagID) }
+                }
+                sqlite3_finalize(manual)
+
+                for classification in classifications {
+                    guard !manualIDs.contains(classification.tagID.uuidString) else { continue }
+                    let insert = try prepare(database, """
+                    INSERT INTO message_tags (
+                        account_id, mailbox, uid, tag_id, confidence, source, is_hidden, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, 'auto', 0, ?)
+                    ON CONFLICT(account_id, mailbox, uid, tag_id) DO UPDATE SET
+                        confidence = excluded.confidence,
+                        source = 'auto',
+                        is_hidden = 0,
+                        updated_at = excluded.updated_at;
+                    """)
+                    bind(insert, 1, accountID.uuidString)
+                    bind(insert, 2, mailbox)
+                    sqlite3_bind_int64(insert, 3, Int64(uid))
+                    bind(insert, 4, classification.tagID.uuidString)
+                    sqlite3_bind_double(insert, 5, classification.confidence)
+                    sqlite3_bind_double(insert, 6, now)
+                    try run(insert)
+                    sqlite3_finalize(insert)
+                }
+
+                let state = try prepare(database, """
+                INSERT INTO message_tag_state (account_id, mailbox, uid, classifier, classified_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, mailbox, uid) DO UPDATE SET
+                    classifier = excluded.classifier,
+                    classified_at = excluded.classified_at;
+                """)
+                bind(state, 1, accountID.uuidString)
+                bind(state, 2, mailbox)
+                sqlite3_bind_int64(state, 3, Int64(uid))
+                bind(state, 4, classifier)
+                sqlite3_bind_double(state, 5, now)
+                try run(state)
+                sqlite3_finalize(state)
+            }
+        }
+    }
+
+    /// Adds or removes a tag manually. A manual removal is stored as a hidden
+    /// row so later automatic classification cannot silently bring it back.
+    public func setMessageTag(
+        accountID: UUID,
+        mailbox: String,
+        uid: UInt32,
+        tagID: UUID,
+        tagged: Bool
+    ) throws {
+        try withDatabase { database in
+            let statement = try prepare(database, """
+            INSERT INTO message_tags (
+                account_id, mailbox, uid, tag_id, confidence, source, is_hidden, updated_at
+            ) VALUES (?, ?, ?, ?, ?, 'manual', ?, ?)
+            ON CONFLICT(account_id, mailbox, uid, tag_id) DO UPDATE SET
+                confidence = excluded.confidence,
+                source = 'manual',
+                is_hidden = excluded.is_hidden,
+                updated_at = excluded.updated_at;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(statement, 1, accountID.uuidString)
+            bind(statement, 2, mailbox)
+            sqlite3_bind_int64(statement, 3, Int64(uid))
+            bind(statement, 4, tagID.uuidString)
+            sqlite3_bind_double(statement, 5, tagged ? 1 : 0)
+            sqlite3_bind_int(statement, 6, tagged ? 0 : 1)
+            sqlite3_bind_double(statement, 7, Date().timeIntervalSince1970)
+            try run(statement)
+        }
+    }
+
+    /// Removes every tag and classification marker for a message. Used when a
+    /// message is deleted from the archive.
+    public func deleteTags(accountID: UUID, mailbox: String, uid: UInt32) throws {
+        try withDatabase { _ in
+            try transactionLocked {
+                let database = try handleLocked()
+                for table in ["message_tags", "message_tag_state"] {
+                    let statement = try prepare(database, """
+                    DELETE FROM \(table)
+                    WHERE account_id = ? AND mailbox = ? AND uid = ?;
+                    """)
+                    bind(statement, 1, accountID.uuidString)
+                    bind(statement, 2, mailbox)
+                    sqlite3_bind_int64(statement, 3, Int64(uid))
+                    try run(statement)
+                    sqlite3_finalize(statement)
                 }
             }
         }
@@ -639,7 +989,7 @@ public final class MailDatabase: @unchecked Sendable {
     ) throws {
         try withDatabase { database in
             try transactionLocked {
-                for table in ["attachments", "message_bodies", "messages"] {
+                for table in ["message_tags", "message_tag_state", "attachments", "message_bodies", "messages"] {
                     let statement = try prepare(database, """
                     DELETE FROM \(table)
                     WHERE account_id = ? AND mailbox = ?;
@@ -662,7 +1012,7 @@ public final class MailDatabase: @unchecked Sendable {
         try withDatabase { _ in
             try transactionLocked {
                 let database = try handleLocked()
-                for table in ["attachments", "message_bodies", "messages"] {
+                for table in ["message_tags", "message_tag_state", "attachments", "message_bodies", "messages"] {
                     let statement = try prepare(database, """
                     DELETE FROM \(table)
                     WHERE account_id = ? AND mailbox = ?;
@@ -813,7 +1163,7 @@ public final class MailDatabase: @unchecked Sendable {
 
     private func pruneChildrenLocked(accountID: UUID, mailbox: String) throws {
         let database = try handleLocked()
-        for table in ["attachments", "message_bodies"] {
+        for table in ["attachments", "message_bodies", "message_tags", "message_tag_state"] {
             let statement = try prepare(database, """
             DELETE FROM \(table)
             WHERE account_id = ? AND mailbox = ?
@@ -1025,7 +1375,7 @@ public final class MailDatabase: @unchecked Sendable {
         try withDatabase { _ in
             try transactionLocked {
                 let database = try handleLocked()
-                for table in ["attachments", "message_bodies", "messages"] {
+                for table in ["message_tags", "message_tag_state", "attachments", "message_bodies", "messages"] {
                     let statement = try prepare(database, """
                     DELETE FROM \(table)
                     WHERE account_id = ? AND mailbox = ? AND uid = ?;
@@ -1050,7 +1400,7 @@ public final class MailDatabase: @unchecked Sendable {
         try withDatabase { _ in
             try transactionLocked {
                 let database = try handleLocked()
-                for table in ["messages", "message_bodies", "attachments"] {
+                for table in ["messages", "message_bodies", "attachments", "message_tags", "message_tag_state"] {
                     let statement = try prepare(database, """
                     UPDATE \(table) SET mailbox = ?
                     WHERE account_id = ? AND mailbox = ? AND uid = ?;
